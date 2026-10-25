@@ -59,7 +59,7 @@ watch(
     </Transition>
     <AppTopbar v-if="!isPublicPage" />
     <RouterView v-slot="{ Component, route: currentRoute }">
-      <Transition name="route-fade" mode="out-in">
+      <Transition name="page-switch" mode="out-in">
         <main
           :key="currentRoute.path"
           class="app-main"

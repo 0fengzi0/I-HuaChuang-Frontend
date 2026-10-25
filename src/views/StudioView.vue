@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
@@ -14,8 +14,8 @@ import {
   Info,
   LoaderCircle,
   Minus,
-  PencilLine,
   Plus,
+  RotateCcw,
   SlidersHorizontal,
   Sparkles,
   Upload,
@@ -86,8 +86,6 @@ const favoriteSaving = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const previewDialog = ref<HTMLDialogElement | null>(null)
 const advancedOpen = ref(false)
-const generationStage = ref<HTMLElement | null>(null)
-const editorPanel = ref<HTMLElement | null>(null)
 const stageOpen = ref(false)
 let terminalGenerationID = ''
 
@@ -500,11 +498,6 @@ async function submitGeneration() {
   stageOpen.value = true
   activeGenerationId.value = ''
   selectedAssetId.value = ''
-  await nextTick()
-  generationStage.value?.scrollIntoView({
-    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    block: 'start',
-  })
   try {
     const form = new FormData()
     form.append('mode', mode.value)
@@ -536,11 +529,29 @@ async function submitGeneration() {
   }
 }
 
-async function scrollToEditor() {
-  await nextTick()
-  editorPanel.value?.scrollIntoView({
-    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    block: 'start',
+function startNewGeneration() {
+  if (submitting.value || taskIsActive.value) {
+    return
+  }
+  clearReferences()
+  mode.value = 'generate'
+  prompt.value = ''
+  selectedAspectRatio.value = '1:1'
+  selectedResolution.value = '1K'
+  quality.value = 'auto'
+  background.value = 'auto'
+  count.value = 1
+  advancedOpen.value = false
+  submitError.value = ''
+  stageOpen.value = false
+  activeGenerationId.value = ''
+  selectedAssetId.value = ''
+  terminalGenerationID = ''
+  window.requestAnimationFrame(() => {
+    window.scrollTo({
+      top: 0,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    })
   })
 }
 
@@ -770,7 +781,7 @@ onBeforeUnmount(() => {
       </Transition>
     </header>
 
-    <div class="studio-toolbar">
+    <div v-if="!stageVisible" class="studio-toolbar">
       <div class="mode-switch" role="tablist" aria-label="生成模式">
         <button
           type="button"
@@ -812,7 +823,6 @@ onBeforeUnmount(() => {
     <div class="studio-layout" :class="{ 'is-creating': stageVisible }">
       <section
         v-if="stageVisible"
-        ref="generationStage"
         class="workspace"
         aria-label="创作画布"
       >
@@ -944,7 +954,11 @@ onBeforeUnmount(() => {
             </div>
           </button>
 
-          <div v-if="activeGeneration?.outputs.length" class="output-strip" aria-label="本次生成图片">
+          <div
+            v-if="activeGeneration && activeGeneration.outputs.length > 1"
+            class="output-strip"
+            aria-label="本次生成图片"
+          >
             <button
               v-for="output in activeGeneration.outputs"
               :key="output.id"
@@ -1017,7 +1031,7 @@ onBeforeUnmount(() => {
         </article>
       </section>
 
-      <aside ref="editorPanel" class="control-rail" aria-label="创作设置">
+      <aside v-if="!stageVisible" class="control-rail" aria-label="创作设置">
         <div v-if="stageVisible" class="editor-heading">
           <div>
             <span>{{ stageVisible ? '继续编辑' : '开始创作' }}</span>
@@ -1306,37 +1320,108 @@ onBeforeUnmount(() => {
           <p class="rail-footnote">按成功生成的图片计费，失败或超时会退回积分。</p>
         </div>
       </aside>
-    </div>
 
-    <Teleport to="body">
-      <div v-if="stageVisible" class="mobile-action-bar">
-        <button type="button" class="mobile-edit-button" @click="scrollToEditor">
-          <PencilLine :size="17" aria-hidden="true" />
-          编辑
-        </button>
-        <div class="mobile-estimate">
-          <span>{{ count }} 张</span>
-          <strong>{{ totalCost }} 积分</strong>
+      <section v-else class="compact-editor" aria-label="继续编辑">
+        <div class="compact-fields">
+          <label class="compact-prompt">
+            <span class="visually-hidden">图片描述</span>
+            <input
+              v-model="prompt"
+              maxlength="4000"
+              aria-label="图片描述"
+              placeholder="继续描述你想修改的画面"
+              :disabled="taskIsActive || submitting"
+            />
+          </label>
+
+          <label class="compact-select-wrap">
+            <span class="visually-hidden">图片比例</span>
+            <select
+              v-model="selectedAspectRatio"
+              aria-label="紧凑图片比例"
+              :disabled="taskIsActive || submitting"
+            >
+              <option
+                v-for="ratio in aspectRatioOptions"
+                :key="ratio.value"
+                :value="ratio.value"
+                :disabled="ratio.value === 'original' && !originalRatioAvailable"
+              >
+                {{ ratio.label }} {{ ratio.ratio }}
+              </option>
+            </select>
+            <ChevronDown :size="14" aria-hidden="true" />
+          </label>
+
+          <div class="compact-resolution" role="radiogroup" aria-label="紧凑清晰度">
+            <button
+              v-for="option in resolutionOptions"
+              :key="option.value"
+              type="button"
+              role="radio"
+              :aria-checked="selectedResolution === option.value"
+              :class="{ 'is-selected': selectedResolution === option.value }"
+              :disabled="taskIsActive || submitting"
+              @click="selectedResolution = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+
+          <div class="compact-count" aria-label="生成张数">
+            <button
+              type="button"
+              aria-label="减少生成张数"
+              :disabled="count <= 1 || taskIsActive || submitting"
+              @click="decrementCount"
+            >
+              <Minus :size="13" aria-hidden="true" />
+            </button>
+            <span>{{ count }} 张</span>
+            <button
+              type="button"
+              aria-label="增加生成张数"
+              :disabled="count >= 4 || taskIsActive || submitting"
+              @click="incrementCount"
+            >
+              <Plus :size="13" aria-hidden="true" />
+            </button>
+          </div>
+
+          <span class="compact-cost">{{ totalCost }} 积分</span>
         </div>
-        <button
-          type="button"
-          class="button button--primary"
-          :disabled="!canSubmit"
-          @click="submitGeneration"
-        >
-          <LoaderCircle
-            v-if="submitting || taskIsActive"
-            class="spin"
-            :size="16"
-            aria-hidden="true"
-          />
-          <span v-if="submitting">提交中</span>
-          <span v-else-if="taskIsActive">正在绘制</span>
-          <span v-else-if="publicSettings?.generationReady">开始生成</span>
-          <span v-else>暂未连接</span>
-        </button>
-      </div>
-    </Teleport>
+
+        <div class="compact-actions">
+          <button
+            type="button"
+            class="button button--primary compact-generate"
+            :disabled="!canSubmit"
+            @click="submitGeneration"
+          >
+            <LoaderCircle
+              v-if="submitting || taskIsActive"
+              class="spin"
+              :size="15"
+              aria-hidden="true"
+            />
+            <Aperture v-else :size="15" aria-hidden="true" />
+            <span v-if="submitting">准备中</span>
+            <span v-else-if="taskIsActive">绘制中</span>
+            <span v-else>再画一张</span>
+          </button>
+          <button
+            type="button"
+            class="compact-reset"
+            aria-label="新生成"
+            :disabled="taskIsActive || submitting"
+            @click="startNewGeneration"
+          >
+            <RotateCcw :size="15" aria-hidden="true" />
+            <span>新生成</span>
+          </button>
+        </div>
+      </section>
+    </div>
 
     <dialog ref="previewDialog" class="image-dialog" @click="closeDialogFromBackdrop">
       <div class="image-dialog__bar">
@@ -4367,6 +4452,349 @@ onBeforeUnmount(() => {
 
   .mobile-action-bar .button {
     padding: 0 12px;
+  }
+}
+
+.studio-page--creating {
+  margin-top: 12px;
+}
+
+.studio-page--creating .studio-hero {
+  width: min(1060px, 100%);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin: 2px auto 10px;
+}
+
+.studio-page--creating .studio-hero h1 {
+  font-size: clamp(28px, 3.4vw, 40px);
+}
+
+.studio-page--creating .studio-hero p {
+  display: none;
+}
+
+.studio-page--creating .studio-toolbar {
+  display: none;
+}
+
+.studio-page--creating .studio-hero__status {
+  align-self: center;
+}
+
+.studio-layout.is-creating {
+  gap: 12px;
+}
+
+.compact-editor {
+  display: grid;
+  min-width: 0;
+  grid-area: editor;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.compact-fields {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.compact-fields::-webkit-scrollbar {
+  display: none;
+}
+
+.compact-prompt {
+  position: relative;
+  display: block;
+  min-width: 180px;
+  flex: 1 1 260px;
+}
+
+.compact-prompt input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: 0;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  transition:
+    border-color 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out),
+    background-color 160ms var(--ease-out);
+}
+
+.compact-prompt input:focus {
+  border-color: var(--action);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.compact-prompt input::placeholder {
+  color: var(--muted-soft);
+}
+
+.compact-select-wrap {
+  position: relative;
+  display: block;
+  width: 116px;
+  flex: 0 0 116px;
+}
+
+.compact-select-wrap select {
+  width: 100%;
+  height: 42px;
+  appearance: none;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: 0;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+}
+
+.compact-select-wrap select:focus {
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.compact-select-wrap svg {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  color: var(--muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.compact-resolution {
+  display: flex;
+  height: 42px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.compact-resolution button {
+  min-width: 38px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 600;
+  transition:
+    border-color 150ms var(--ease-out),
+    background-color 150ms var(--ease-out),
+    color 150ms var(--ease-out);
+}
+
+.compact-resolution button.is-selected {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+
+.compact-count {
+  display: inline-grid;
+  height: 42px;
+  flex: 0 0 auto;
+  grid-template-columns: 28px auto 28px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.compact-count button {
+  display: grid;
+  width: 28px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.compact-count button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.compact-count span {
+  min-width: 42px;
+  color: var(--ink);
+  font-size: 9px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.compact-cost {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.compact-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.compact-generate {
+  min-height: 42px;
+  padding: 0 13px;
+  font-size: 11px;
+}
+
+.compact-reset {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 10px;
+  transition:
+    border-color 150ms var(--ease-out),
+    background-color 150ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.compact-reset:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-hover);
+}
+
+.compact-reset:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.canvas-frame {
+  height: clamp(340px, 54svh, 580px);
+  min-height: 0;
+  flex: 0 0 auto;
+}
+
+.canvas-media {
+  width: min(100%, calc(clamp(260px, 44svh, 540px) * var(--canvas-aspect)));
+}
+
+@media (max-width: 900px) {
+  .studio-page {
+    padding-bottom: 28px;
+  }
+
+  .studio-page--creating {
+    margin-top: 8px;
+  }
+
+  .studio-page--creating .studio-hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .studio-page--creating .studio-hero h1 {
+    font-size: 29px;
+  }
+
+  .canvas-frame {
+    height: clamp(280px, 44svh, 390px);
+  }
+
+  .canvas-media {
+    width: min(100%, calc(clamp(210px, 32svh, 330px) * var(--canvas-aspect)));
+  }
+
+  .compact-editor {
+    gap: 6px;
+    padding: 7px;
+    border-radius: 16px;
+  }
+
+  .compact-prompt {
+    min-width: 150px;
+    flex-basis: 180px;
+  }
+
+  .compact-select-wrap {
+    width: 98px;
+    flex-basis: 98px;
+  }
+
+  .compact-cost {
+    display: none;
+  }
+
+  .compact-generate {
+    min-width: 90px;
+    padding: 0 10px;
+  }
+
+  .compact-reset {
+    width: 40px;
+    padding: 0;
+  }
+
+  .compact-reset span {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .studio-page--creating .studio-hero {
+    align-items: start;
+    grid-template-columns: 1fr;
+  }
+
+  .studio-page--creating .studio-hero__status {
+    justify-self: start;
+  }
+
+  .compact-count {
+    grid-template-columns: 26px 38px 26px;
+  }
+
+  .compact-count button {
+    width: 26px;
+  }
+
+  .compact-count span {
+    min-width: 38px;
   }
 }
 

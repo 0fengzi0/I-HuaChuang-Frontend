@@ -162,26 +162,26 @@ img {
   min-height: 100svh;
 }
 
-.route-fade-enter-active {
+.page-switch-enter-active {
   transition:
-    opacity 180ms var(--ease-out),
-    transform 180ms var(--ease-out);
+    opacity 340ms var(--ease-out),
+    transform 420ms var(--ease-out);
 }
 
-.route-fade-leave-active {
+.page-switch-leave-active {
   transition:
-    opacity 160ms var(--ease-in),
-    transform 160ms var(--ease-in);
+    opacity 190ms var(--ease-in),
+    transform 230ms var(--ease-in);
 }
 
-.route-fade-enter-from {
+.page-switch-enter-from {
   opacity: 0;
-  transform: translateY(4px);
+  transform: translateY(14px) scale(0.994);
 }
 
-.route-fade-leave-to {
+.page-switch-leave-to {
   opacity: 0;
-  transform: translateY(-2px);
+  transform: translateY(-6px) scale(0.998);
 }
 
 .page-frame {
@@ -615,8 +615,8 @@ img {
     transition-duration: 0.01ms !important;
   }
 
-  .route-fade-enter-from,
-  .route-fade-leave-to {
+  .page-switch-enter-from,
+  .page-switch-leave-to {
     transform: none;
   }
 }

@@ -15,12 +15,19 @@ test('loads the demo studio and main routes', async ({ page }) => {
   await generateButton.evaluate((button: HTMLElement) => button.click())
   await expect(page.locator('.workspace')).toBeVisible()
   await expect(page.getByText('你的画面完成了')).toBeVisible({ timeout: 12_000 })
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
 
   const stageBox = await page.locator('.workspace').boundingBox()
-  const editorBox = await page.locator('.control-rail').boundingBox()
+  const editorBox = await page.locator('.compact-editor').boundingBox()
   expect(stageBox).not.toBeNull()
   expect(editorBox).not.toBeNull()
   expect(stageBox!.y).toBeLessThan(editorBox!.y)
+  expect(editorBox!.height).toBeLessThanOrEqual(72)
+  await expect(page.locator('.control-rail')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '新生成' }).click()
+  await expect(page.locator('.workspace')).toHaveCount(0)
+  await expect(page.locator('textarea').first()).toHaveValue('')
 
   await page.getByRole('button', { name: '打开最近作品' }).click()
   const recentDialog = page.getByRole('dialog')
