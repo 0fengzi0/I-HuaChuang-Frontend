@@ -1020,18 +1020,9 @@ onBeforeUnmount(() => {
         </article>
       </section>
 
-      <aside v-if="!stageVisible" class="control-rail" aria-label="创作设置">
-        <div v-if="stageVisible" class="editor-heading">
-          <div>
-            <span>{{ stageVisible ? '继续编辑' : '开始创作' }}</span>
-            <h2>{{ stageVisible ? '调整下一张' : '说出你想要的画面' }}</h2>
-          </div>
-          <span v-if="stageVisible" class="editor-heading__note">
-            {{ taskIsActive || submitting ? '生成时参数会暂时锁定' : '可以继续修改后再次生成' }}
-          </span>
-        </div>
-
-        <section class="tool-card prompt-card">
+      <aside class="control-rail" aria-label="创作设置">
+        <section class="tool-card prompt-card" :class="{ 'compact-editor': stageVisible }">
+          <template v-if="!stageVisible">
           <div class="card-heading">
             <h2>描述你想要的画面</h2>
             <span class="char-count">{{ prompt.length }} / 4000</span>
@@ -1160,9 +1151,111 @@ onBeforeUnmount(() => {
             {{ submitError }}
           </p>
           <p class="prompt-footnote">按成功生成的图片计费，失败或超时会退回积分。</p>
+          </template>
+          <template v-else>
+            <div class="compact-fields">
+              <label class="compact-prompt">
+                <span class="visually-hidden">图片描述</span>
+                <input
+                  v-model="prompt"
+                  maxlength="4000"
+                  aria-label="图片描述"
+                  placeholder="继续描述你想修改的画面"
+                  :disabled="taskIsActive || submitting"
+                />
+              </label>
+
+              <label class="compact-select-wrap">
+                <span class="visually-hidden">图片比例</span>
+                <select
+                  v-model="selectedAspectRatio"
+                  aria-label="紧凑图片比例"
+                  :disabled="taskIsActive || submitting"
+                >
+                  <option
+                    v-for="ratio in aspectRatioOptions"
+                    :key="ratio.value"
+                    :value="ratio.value"
+                    :disabled="ratio.value === 'original' && !originalRatioAvailable"
+                  >
+                    {{ ratio.label }} {{ ratio.ratio }}
+                  </option>
+                </select>
+                <ChevronDown :size="14" aria-hidden="true" />
+              </label>
+
+              <div class="compact-resolution" role="radiogroup" aria-label="紧凑清晰度">
+                <button
+                  v-for="option in resolutionOptions"
+                  :key="option.value"
+                  type="button"
+                  role="radio"
+                  :aria-checked="selectedResolution === option.value"
+                  :class="{ 'is-selected': selectedResolution === option.value }"
+                  :disabled="taskIsActive || submitting"
+                  @click="selectedResolution = option.value"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+
+              <div class="compact-count" aria-label="生成张数">
+                <button
+                  type="button"
+                  aria-label="减少生成张数"
+                  :disabled="count <= 1 || taskIsActive || submitting"
+                  @click="decrementCount"
+                >
+                  <Minus :size="13" aria-hidden="true" />
+                </button>
+                <span>{{ count }} 张</span>
+                <button
+                  type="button"
+                  aria-label="增加生成张数"
+                  :disabled="count >= 4 || taskIsActive || submitting"
+                  @click="incrementCount"
+                >
+                  <Plus :size="13" aria-hidden="true" />
+                </button>
+              </div>
+
+              <span class="compact-cost">可用 {{ availableCredits }} 积分</span>
+            </div>
+
+            <div class="compact-actions">
+              <button
+                type="button"
+                class="button button--primary compact-generate"
+                :disabled="!canSubmit"
+                @click="submitGeneration"
+              >
+                <LoaderCircle
+                  v-if="submitting || taskIsActive"
+                  class="spin"
+                  :size="15"
+                  aria-hidden="true"
+                />
+                <Aperture v-else :size="15" aria-hidden="true" />
+                <span v-if="submitting">准备中</span>
+                <span v-else-if="taskIsActive">绘制中</span>
+                <span v-else>再画一张</span>
+                <strong>{{ totalCost }} 积分</strong>
+              </button>
+              <button
+                type="button"
+                class="compact-reset"
+                aria-label="新生成"
+                :disabled="taskIsActive || submitting"
+                @click="startNewGeneration"
+              >
+                <RotateCcw :size="15" aria-hidden="true" />
+                <span>新生成</span>
+              </button>
+            </div>
+          </template>
         </section>
 
-        <section v-if="mode === 'edit'" class="tool-card reference-card">
+        <section v-if="!stageVisible && mode === 'edit'" class="tool-card reference-card">
           <div class="card-heading">
             <h2>添加参考图</h2>
             <span class="char-count">{{ references.length }} / 4</span>
@@ -1204,7 +1297,7 @@ onBeforeUnmount(() => {
           <p v-if="uploadError" class="field-error" role="alert">{{ uploadError }}</p>
         </section>
 
-        <Transition name="advanced">
+        <Transition v-if="!stageVisible" name="advanced">
           <section v-if="advancedOpen" class="tool-card parameters-card">
             <div class="card-heading">
               <h2>画面细节</h2>
@@ -1249,107 +1342,6 @@ onBeforeUnmount(() => {
 
       </aside>
 
-      <section v-else class="compact-editor" aria-label="继续编辑">
-        <div class="compact-fields">
-          <label class="compact-prompt">
-            <span class="visually-hidden">图片描述</span>
-            <input
-              v-model="prompt"
-              maxlength="4000"
-              aria-label="图片描述"
-              placeholder="继续描述你想修改的画面"
-              :disabled="taskIsActive || submitting"
-            />
-          </label>
-
-          <label class="compact-select-wrap">
-            <span class="visually-hidden">图片比例</span>
-            <select
-              v-model="selectedAspectRatio"
-              aria-label="紧凑图片比例"
-              :disabled="taskIsActive || submitting"
-            >
-              <option
-                v-for="ratio in aspectRatioOptions"
-                :key="ratio.value"
-                :value="ratio.value"
-                :disabled="ratio.value === 'original' && !originalRatioAvailable"
-              >
-                {{ ratio.label }} {{ ratio.ratio }}
-              </option>
-            </select>
-            <ChevronDown :size="14" aria-hidden="true" />
-          </label>
-
-          <div class="compact-resolution" role="radiogroup" aria-label="紧凑清晰度">
-            <button
-              v-for="option in resolutionOptions"
-              :key="option.value"
-              type="button"
-              role="radio"
-              :aria-checked="selectedResolution === option.value"
-              :class="{ 'is-selected': selectedResolution === option.value }"
-              :disabled="taskIsActive || submitting"
-              @click="selectedResolution = option.value"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-
-          <div class="compact-count" aria-label="生成张数">
-            <button
-              type="button"
-              aria-label="减少生成张数"
-              :disabled="count <= 1 || taskIsActive || submitting"
-              @click="decrementCount"
-            >
-              <Minus :size="13" aria-hidden="true" />
-            </button>
-            <span>{{ count }} 张</span>
-            <button
-              type="button"
-              aria-label="增加生成张数"
-              :disabled="count >= 4 || taskIsActive || submitting"
-              @click="incrementCount"
-            >
-              <Plus :size="13" aria-hidden="true" />
-            </button>
-          </div>
-
-          <span class="compact-cost">可用 {{ availableCredits }} 积分</span>
-        </div>
-
-        <div class="compact-actions">
-          <button
-            type="button"
-            class="button button--primary compact-generate"
-            :disabled="!canSubmit"
-            @click="submitGeneration"
-          >
-            <LoaderCircle
-              v-if="submitting || taskIsActive"
-              class="spin"
-              :size="15"
-              aria-hidden="true"
-            />
-            <Aperture v-else :size="15" aria-hidden="true" />
-            <span v-if="submitting">准备中</span>
-            <span v-else-if="taskIsActive">绘制中</span>
-            <span v-else>再画一张</span>
-            <strong>{{ totalCost }} 积分</strong>
-          </button>
-          <button
-            type="button"
-            class="compact-reset"
-            aria-label="新生成"
-            :disabled="taskIsActive || submitting"
-            @click="startNewGeneration"
-          >
-            <RotateCcw :size="15" aria-hidden="true" />
-            <span>新生成</span>
-          </button>
-        </div>
-      </section>
     </div>
 
     <dialog ref="previewDialog" class="image-dialog" @click="closeDialogFromBackdrop">
@@ -3003,40 +2995,6 @@ onBeforeUnmount(() => {
   grid-area: editor;
 }
 
-.editor-heading {
-  display: flex;
-  min-height: 42px;
-  align-items: end;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 0 2px;
-}
-
-.editor-heading > div {
-  display: grid;
-  gap: 3px;
-}
-
-.editor-heading > div > span,
-.editor-heading__note {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.editor-heading h2 {
-  margin: 0;
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 560;
-}
-
-.editor-heading__note {
-  max-width: 34ch;
-  line-height: 1.55;
-  text-align: right;
-}
-
 .tool-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -4263,16 +4221,6 @@ onBeforeUnmount(() => {
     grid-row: 2;
   }
 
-  .editor-heading {
-    align-items: start;
-    flex-direction: column;
-    gap: 5px;
-  }
-
-  .editor-heading__note {
-    text-align: left;
-  }
-
   .prompt-card,
   .reference-card,
   .parameters-card {
@@ -4488,7 +4436,6 @@ onBeforeUnmount(() => {
 .compact-editor {
   display: grid;
   min-width: 0;
-  grid-area: editor;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;

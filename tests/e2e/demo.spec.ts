@@ -12,8 +12,18 @@ test('loads the demo studio and main routes', async ({ page }) => {
     .filter({ hasText: '开始生成' })
     .first()
   await expect(generateButton).toBeEnabled()
+  await page.locator('.prompt-card').evaluate((element) => {
+    ;(window as Window & { __studioEditor?: Element }).__studioEditor = element
+  })
   await generateButton.evaluate((button: HTMLElement) => button.click())
   await expect(page.locator('.workspace')).toBeVisible()
+  expect(
+    await page.evaluate(
+      () =>
+        (window as Window & { __studioEditor?: Element }).__studioEditor ===
+        document.querySelector('.prompt-card'),
+    ),
+  ).toBe(true)
   await expect(page.getByText('你的画面完成了')).toBeVisible({ timeout: 12_000 })
   expect(await page.evaluate(() => window.scrollY)).toBe(0)
 
@@ -23,7 +33,9 @@ test('loads the demo studio and main routes', async ({ page }) => {
   expect(editorBox).not.toBeNull()
   expect(stageBox!.y).toBeLessThan(editorBox!.y)
   expect(editorBox!.height).toBeLessThanOrEqual(72)
-  await expect(page.locator('.control-rail')).toHaveCount(0)
+  await expect(page.locator('.control-rail')).toBeVisible()
+  await expect(page.locator('.prompt-card')).toHaveClass(/compact-editor/)
+  await expect(page.getByText('调整下一张')).toHaveCount(0)
 
   await page.getByRole('button', { name: '新生成' }).click()
   await expect(page.locator('.workspace')).toHaveCount(0)
