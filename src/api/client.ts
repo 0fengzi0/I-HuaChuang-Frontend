@@ -29,6 +29,8 @@ export interface PublicSettings {
   pricing: Record<'1K' | '2K', number>
   generationReady: boolean
   emailVerification: boolean
+  dailyGrantCredits: number
+  signupGrantCredits: number
   generatedAt: string
 }
 
@@ -40,6 +42,22 @@ export interface LedgerEntry {
   generationId?: string
   cardKeyId?: string
   createdAt: string
+}
+
+export interface CheckinStatus {
+  dailyCredits: number
+  canClaim: boolean
+  claimedToday: boolean
+  period: string
+  lastClaimedAt?: string
+}
+
+export interface CheckinResponse {
+  credits: number
+  balance: number
+  period: string
+  claimedAt: string
+  message: string
 }
 
 export type GenerationStatus =

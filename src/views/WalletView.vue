@@ -11,8 +11,15 @@ import {
   LoaderCircle,
   ShieldCheck,
   TicketCheck,
+  CalendarCheck2,
 } from 'lucide-vue-next'
-import { APIError, apiRequest, type LedgerEntry } from '../api/client'
+import {
+  APIError,
+  apiRequest,
+  type CheckinResponse,
+  type CheckinStatus,
+  type LedgerEntry,
+} from '../api/client'
 import { usePublicSettings } from '../composables/usePublicSettings'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationsStore } from '../stores/notifications'
@@ -32,9 +39,19 @@ const { data: wallet, isLoading, isError, refetch } = useQuery({
   queryKey: ['wallet'],
   queryFn: () => apiRequest<WalletResponse>('/api/wallet'),
 })
+const {
+  data: checkin,
+  isLoading: checkinLoading,
+  refetch: refetchCheckin,
+} = useQuery({
+  queryKey: ['wallet', 'checkin'],
+  queryFn: () => apiRequest<CheckinStatus>('/api/wallet/checkin'),
+})
 const code = ref('')
 const redeemError = ref('')
 const redeeming = ref(false)
+const checkinError = ref('')
+const checkingIn = ref(false)
 
 const balance = computed(() => wallet.value?.availableCredits ?? auth.user?.availableCredits ?? 0)
 const reserved = computed(() => wallet.value?.reservedCredits ?? auth.user?.reservedCredits ?? 0)
@@ -77,11 +94,36 @@ function formatDate(value: string) {
 function ledgerLabel(reason: string) {
   const labels: Record<string, string> = {
     card_redeem: '卡密兑换',
+    daily_checkin: '每日签到',
+    signup_bonus: '注册奖励',
     admin_adjustment: '管理员调整',
     generation_charge: '生成扣费',
     generation_refund: '生成退款',
   }
   return labels[reason] || reason
+}
+
+async function claimCheckin() {
+  checkinError.value = ''
+  checkingIn.value = true
+  try {
+    const response = await apiRequest<CheckinResponse>('/api/wallet/checkin', {
+      method: 'POST',
+    })
+    auth.updateCredits(
+      Math.max(0, response.balance - (auth.user?.reservedCredits ?? 0)),
+      auth.user?.reservedCredits ?? 0,
+    )
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['wallet'] }),
+      refetchCheckin(),
+    ])
+    notifications.push(response.message, 'success')
+  } catch (error) {
+    checkinError.value = error instanceof APIError ? error.message : '暂时无法完成签到。'
+  } finally {
+    checkingIn.value = false
+  }
 }
 </script>
 
@@ -116,6 +158,33 @@ function ledgerLabel(reason: string) {
         <div class="balance-note">
           <ShieldCheck :size="16" aria-hidden="true" />
           <span>余额变更均记录在不可覆盖的积分流水中。</span>
+        </div>
+        <div v-if="checkinLoading" class="checkin-block">
+          <LoaderCircle class="spin" :size="16" aria-hidden="true" />
+          <span>正在读取签到状态</span>
+        </div>
+        <div v-else-if="settings && settings.dailyGrantCredits > 0" class="checkin-block">
+          <div>
+            <strong>每日签到</strong>
+            <span>
+              {{
+                checkin?.claimedToday
+                  ? `今天已领取，明天可再领 ${settings.dailyGrantCredits} 积分`
+                  : `今天可领 ${settings.dailyGrantCredits} 积分`
+              }}
+            </span>
+          </div>
+          <button
+            class="button button--primary button--small"
+            type="button"
+            :disabled="checkingIn || !checkin?.canClaim"
+            @click="claimCheckin"
+          >
+            <LoaderCircle v-if="checkingIn" class="spin" :size="14" aria-hidden="true" />
+            <CalendarCheck2 v-else :size="14" aria-hidden="true" />
+            {{ checkin?.claimedToday ? '已签到' : '立即签到' }}
+          </button>
+          <small v-if="checkinError" class="field-error" role="alert">{{ checkinError }}</small>
         </div>
       </section>
 
@@ -276,6 +345,40 @@ function ledgerLabel(reason: string) {
   color: var(--muted);
   font-size: 10px;
   line-height: 1.5;
+}
+
+.checkin-block {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.checkin-block > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.checkin-block strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.checkin-block span {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.checkin-block .field-error {
+  flex-basis: 100%;
 }
 
 .redeem-card {

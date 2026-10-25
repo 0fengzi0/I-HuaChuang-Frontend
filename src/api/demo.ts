@@ -256,6 +256,8 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
       pricing: demoPricing,
       generationReady: true,
       emailVerification: false,
+      dailyGrantCredits: 2,
+      signupGrantCredits: 5,
       generatedAt: new Date().toISOString(),
     } as T
   }
@@ -332,6 +334,26 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
   if (url.pathname === '/api/wallet/redeem' && method === 'POST') {
     demoCredits += 10
     return { balance: demoCredits, message: '演示积分已到账。' } as T
+  }
+
+  if (url.pathname === '/api/wallet/checkin' && method === 'POST') {
+    demoCredits += 2
+    return {
+      credits: 2,
+      balance: demoCredits,
+      period: new Date().toISOString().slice(0, 10),
+      claimedAt: new Date().toISOString(),
+      message: '签到成功，获得 2 积分。',
+    } as T
+  }
+
+  if (url.pathname === '/api/wallet/checkin') {
+    return {
+      dailyCredits: 2,
+      canClaim: true,
+      claimedToday: false,
+      period: new Date().toISOString().slice(0, 10),
+    } as T
   }
 
   if (url.pathname === '/api/me') {
