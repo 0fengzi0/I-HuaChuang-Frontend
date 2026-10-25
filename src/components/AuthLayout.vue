@@ -85,13 +85,13 @@ defineProps<{
   margin: 12px 0 12px 12px;
   overflow: hidden;
   border-radius: var(--radius-card);
-  background: var(--candy-pink, #ffd2de);
+  background: var(--surface-muted);
 }
 
 .auth-visual::after {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, rgb(74 49 52 / 26%), transparent 32%, rgb(74 49 52 / 62%));
+  background: linear-gradient(to bottom, rgb(18 19 22 / 20%), transparent 32%, rgb(18 19 22 / 58%));
   content: '';
   pointer-events: none;
 }
@@ -142,7 +142,7 @@ defineProps<{
 
 .auth-visual__caption p {
   margin: 8px 0 0;
-  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(24px, 2.5vw, 38px);
   font-weight: 520;
   line-height: 1.25;
@@ -175,7 +175,7 @@ defineProps<{
 .auth-panel__heading h1 {
   margin: 10px 0 10px;
   color: var(--ink);
-  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(34px, 4vw, 48px);
   font-weight: 600;
   letter-spacing: 0;

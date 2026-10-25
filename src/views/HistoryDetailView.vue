@@ -174,7 +174,7 @@ function formatDate(value: string | null) {
     <template v-else>
       <div class="detail-heading">
         <div>
-          <span class="page-kicker">TASK / {{ generation.id.slice(0, 8) }}</span>
+          <span class="page-kicker">任务 {{ generation.id.slice(0, 8) }}</span>
           <h1>{{ generation.prompt }}</h1>
           <p>
             {{ generation.mode === 'edit' ? '图生图' : '文生图' }}
@@ -427,7 +427,7 @@ function formatDate(value: string | null) {
 }
 
 .detail-panel {
-  background: color-mix(in srgb, var(--surface) 91%, var(--candy-mint-soft));
+  background: var(--surface);
 }
 
 .detail-canvas__head {

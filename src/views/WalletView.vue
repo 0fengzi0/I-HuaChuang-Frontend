@@ -89,7 +89,7 @@ function ledgerLabel(reason: string) {
   <div class="page-frame wallet-page">
     <header class="page-heading">
       <div>
-        <span class="page-kicker">WALLET / CREDITS</span>
+        <span class="page-kicker">积分与卡密</span>
         <h1>积分与卡密</h1>
         <p>卡密在站外购买，回到这里兑换。每次生成按成功图片逐张结算。</p>
       </div>
@@ -103,7 +103,7 @@ function ledgerLabel(reason: string) {
     <div class="wallet-grid">
       <section class="balance-card">
         <div class="balance-card__top">
-          <span class="card-index">AVAILABLE</span>
+          <span class="card-index">可用积分</span>
           <BadgeCheck :size="20" aria-hidden="true" />
         </div>
         <div class="balance-value">
@@ -228,7 +228,7 @@ function ledgerLabel(reason: string) {
   flex-direction: column;
   justify-content: space-between;
   padding: 18px;
-  background: color-mix(in srgb, var(--candy-pink-soft) 72%, var(--surface));
+  background: var(--surface-muted);
 }
 
 .balance-card__top {
@@ -246,7 +246,7 @@ function ledgerLabel(reason: string) {
 
 .balance-value strong {
   color: var(--ink);
-  font-family: 'Fredoka', 'IBM Plex Mono', sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(58px, 7vw, 92px);
   font-weight: 550;
   line-height: 0.9;
@@ -280,7 +280,7 @@ function ledgerLabel(reason: string) {
 
 .redeem-card {
   padding: 18px;
-  background: color-mix(in srgb, var(--candy-blue-soft) 66%, var(--surface));
+  background: var(--surface);
 }
 
 .redeem-form {

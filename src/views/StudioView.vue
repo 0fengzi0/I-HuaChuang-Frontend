@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
@@ -10,11 +10,11 @@ import {
   Download,
   Expand,
   Heart,
-  ImagePlus,
   Images,
   Info,
   LoaderCircle,
   Minus,
+  PencilLine,
   Plus,
   SlidersHorizontal,
   Sparkles,
@@ -22,7 +22,6 @@ import {
   WandSparkles,
   X,
 } from 'lucide-vue-next'
-import canvasFluid from '../assets/canvas-fluid.jpg'
 import ProtectedImage from '../components/ProtectedImage.vue'
 import {
   APIError,
@@ -30,7 +29,6 @@ import {
   apiRequest,
   type CreateGenerationResponse,
   type Generation,
-  type GenerationList,
   type GenerationOutput,
   type GenerationSettings,
   type ReuseResponse,
@@ -87,13 +85,11 @@ const downloading = ref(false)
 const favoriteSaving = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const previewDialog = ref<HTMLDialogElement | null>(null)
-const mobileControlsOpen = ref(false)
+const advancedOpen = ref(false)
+const generationStage = ref<HTMLElement | null>(null)
+const editorPanel = ref<HTMLElement | null>(null)
+const stageOpen = ref(false)
 let terminalGenerationID = ''
-
-const recentQuery = useQuery({
-  queryKey: ['generations', 'recent'],
-  queryFn: () => apiRequest<GenerationList>('/api/generations?limit=6'),
-})
 
 const generationQuery = useQuery({
   queryKey: computed(() => ['generation', activeGenerationId.value]),
@@ -109,15 +105,9 @@ const generationQuery = useQuery({
 })
 
 const activeGeneration = computed(() => generationQuery.data.value ?? null)
-const recentItems = computed(() => recentQuery.data.value?.items ?? [])
-const recentAssets = computed(() =>
-  recentItems.value.flatMap((generation) =>
-    generation.outputs.flatMap((output) =>
-      output.asset
-        ? [{ generationId: generation.id, output, asset: output.asset }]
-        : [],
-    ),
-  ).slice(0, 6),
+const stageVisible = computed(() => stageOpen.value)
+const stageError = computed(
+  () => submitError.value && !submitting.value && !activeGeneration.value,
 )
 const selectedOutput = computed<GenerationOutput | null>(() => {
   const generation = activeGeneration.value
@@ -136,6 +126,23 @@ const taskIsActive = computed(
     Boolean(activeGeneration.value) &&
     ['preparing', 'queued', 'running'].includes(activeGeneration.value!.status),
 )
+const renderStep = computed(() => {
+  if (submitting.value) {
+    return 1
+  }
+  switch (activeStatus.value) {
+    case 'preparing':
+    case 'queued':
+      return 1
+    case 'running':
+      return 2
+    case 'succeeded':
+    case 'partially_succeeded':
+      return 3
+    default:
+      return 0
+  }
+})
 const canSubmit = computed(
   () =>
     Boolean(publicSettings.value?.generationReady) &&
@@ -268,27 +275,45 @@ const canvasRatio = computed(() => {
       return '1 / 1'
   }
 })
-const canvasLabel = computed(() => {
+const canvasAspect = computed(() => {
   if (selectedAspectRatio.value === 'original' && originalReference.value) {
-    return `原始 ${formatAspectRatio(originalReference.value.width, originalReference.value.height)}`
+    return originalReference.value.width / originalReference.value.height
   }
-  return (
-    aspectRatioOptions.find((item) => item.value === selectedAspectRatio.value)?.ratio ?? '1 : 1'
-  )
+  switch (selectedAspectRatio.value) {
+    case '3:2':
+      return 3 / 2
+    case '2:3':
+      return 2 / 3
+    case '16:9':
+      return 16 / 9
+    case '9:16':
+      return 9 / 16
+    case '4:3':
+      return 4 / 3
+    case '3:4':
+      return 3 / 4
+    case '21:9':
+      return 21 / 9
+    case '9:21':
+      return 9 / 21
+    default:
+      return 1
+  }
 })
 const statusLabel = computed(() => {
   if (submitting.value) return '正在提交'
+  if (stageError.value) return '等待重新提交'
   switch (activeStatus.value) {
     case 'preparing':
-      return '正在准备'
+      return '准备画面'
     case 'queued':
-      return '排队中'
+      return '等待开始'
     case 'running':
-      return '正在生成'
+      return '正在绘制'
     case 'succeeded':
-      return '生成完成'
+      return '作品完成'
     case 'partially_succeeded':
-      return '部分成功'
+      return '部分完成'
     case 'failed':
       return '生成失败'
     case 'canceled':
@@ -300,21 +325,36 @@ const statusLabel = computed(() => {
 const statusHint = computed(() => {
   switch (activeStatus.value) {
     case 'preparing':
-      return '正在校验并保存参考图'
+      return '正在检查参考图并准备创作'
     case 'queued':
-      return '任务已进入队列，等待可用生成通道'
+      return '已经排上队，轮到你时会自动开始绘制'
     case 'running':
-      return `${activeGeneration.value?.outputs.filter((output) => output.status === 'succeeded').length ?? 0} / ${activeGeneration.value?.outputs.length ?? count.value} 张已完成`
+      return `正在绘制，已完成 ${activeGeneration.value?.outputs.filter((output) => output.status === 'succeeded').length ?? 0} / ${activeGeneration.value?.outputs.length ?? count.value} 张`
     case 'partially_succeeded':
-      return '部分图片已成功生成，失败的输出未扣除积分'
+      return '部分图片已经完成，没有生成的图片不会扣积分'
     case 'failed':
-      return activeGeneration.value?.errorMessage || '本次任务没有成功输出，冻结积分已释放'
+      return activeGeneration.value?.errorMessage || '这次没有生成图片，冻结的积分已经退回'
     case 'succeeded':
-      return `本次正式扣除 ${activeGeneration.value?.chargedCredits ?? 0} 积分`
+      return `作品已经保存，本次使用 ${activeGeneration.value?.chargedCredits ?? 0} 积分`
     default:
-      return '生成结果会以显影动效落定在画布中央'
+      return '画面会在这里慢慢显现'
   }
 })
+const heroTitle = computed(() => {
+  if (!stageVisible.value) return '今天想画什么？'
+  if (submitting.value || taskIsActive.value) return '正在为你创作'
+  if (activeStatus.value === 'succeeded' || activeStatus.value === 'partially_succeeded') {
+    return '你的画面完成了'
+  }
+  if (activeStatus.value === 'failed' || stageError.value) return '这次没有完成'
+  return '画面正在展开'
+})
+const heroDescription = computed(() =>
+  stageVisible.value
+    ? '图片会留在画布上，下面的描述和参数可以继续调整。'
+    : '写下一句话，选择比例和清晰度，就可以开始。',
+)
+const renderStages = ['已提交', '正在绘制', '处理图片']
 
 function setMode(nextMode: ModeValue) {
   mode.value = nextMode
@@ -367,27 +407,6 @@ function originalTargetSize(width: number, height: number, resolution: Resolutio
     }
   }
   return `${targetWidth}x${targetHeight}`
-}
-
-function greatestCommonDivisor(left: number, right: number): number {
-  let first = Math.abs(left)
-  let second = Math.abs(right)
-  while (second !== 0) {
-    const remainder = first % second
-    first = second
-    second = remainder
-  }
-  return first || 1
-}
-
-function formatAspectRatio(width: number, height: number) {
-  const divisor = greatestCommonDivisor(width, height)
-  const ratioWidth = width / divisor
-  const ratioHeight = height / divisor
-  if (ratioWidth <= 100 && ratioHeight <= 100) {
-    return `${ratioWidth} : ${ratioHeight}`
-  }
-  return `${(width / height).toFixed(2)} : 1`
 }
 
 function readImageDimensions(url: string) {
@@ -478,6 +497,14 @@ async function submitGeneration() {
     return
   }
   submitting.value = true
+  stageOpen.value = true
+  activeGenerationId.value = ''
+  selectedAssetId.value = ''
+  await nextTick()
+  generationStage.value?.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'start',
+  })
   try {
     const form = new FormData()
     form.append('mode', mode.value)
@@ -495,13 +522,11 @@ async function submitGeneration() {
       body: form,
     })
     activeGenerationId.value = created.id
-    selectedAssetId.value = ''
     terminalGenerationID = ''
     auth.updateCredits(
       Math.max(0, (auth.user?.availableCredits ?? 0) - created.estimatedCredits),
       (auth.user?.reservedCredits ?? 0) + created.estimatedCredits,
     )
-    mobileControlsOpen.value = false
     notifications.push('任务已提交，积分已按张数冻结。', 'success')
     await queryClient.invalidateQueries({ queryKey: ['generations', 'recent'] })
   } catch (error) {
@@ -509,6 +534,14 @@ async function submitGeneration() {
   } finally {
     submitting.value = false
   }
+}
+
+async function scrollToEditor() {
+  await nextTick()
+  editorPanel.value?.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'start',
+  })
 }
 
 function selectOutput(output: GenerationOutput) {
@@ -663,6 +696,9 @@ function applyLegacySize(size: string) {
 }
 
 function openPreview() {
+  if (!selectedOutput.value?.asset) {
+    return
+  }
   previewDialog.value?.showModal()
 }
 
@@ -691,6 +727,7 @@ watch(activeGeneration, async (generation) => {
     terminalGenerationID = generation.id
     await queryClient.invalidateQueries({ queryKey: ['generations'] })
     if (generation.status === 'succeeded' || generation.status === 'partially_succeeded') {
+      window.dispatchEvent(new Event('recent-works-changed'))
       notifications.push(
         generation.status === 'succeeded' ? '图片已完成。' : '部分图片已完成，失败输出未扣费。',
         generation.status === 'succeeded' ? 'success' : 'warning',
@@ -701,10 +738,6 @@ watch(activeGeneration, async (generation) => {
   }
 })
 
-watch(mobileControlsOpen, (open) => {
-  document.body.style.overflow = open ? 'hidden' : ''
-})
-
 watch(
   () => route.query.reuse,
   () => void applyReuse(),
@@ -713,12 +746,30 @@ watch(
 
 onBeforeUnmount(() => {
   clearReferences()
-  document.body.style.overflow = ''
 })
 </script>
 
 <template>
-  <div class="studio-page">
+  <div class="studio-page" :class="{ 'studio-page--creating': stageVisible }">
+    <header class="studio-hero">
+      <div class="studio-hero__copy">
+        <h1>{{ heroTitle }}</h1>
+        <p>{{ heroDescription }}</p>
+      </div>
+      <Transition name="status-fade">
+        <span v-if="stageVisible" class="studio-hero__status" aria-live="polite">
+          <i
+            :class="{
+              'is-active': submitting || taskIsActive,
+              'is-ready': activeStatus === 'succeeded',
+              'is-error': activeStatus === 'failed' || stageError,
+            }"
+          />
+          {{ statusLabel }}
+        </span>
+      </Transition>
+    </header>
+
     <div class="studio-toolbar">
       <div class="mode-switch" role="tablist" aria-label="生成模式">
         <button
@@ -726,295 +777,73 @@ onBeforeUnmount(() => {
           role="tab"
           :aria-selected="mode === 'generate'"
           :class="{ 'is-active': mode === 'generate' }"
+          :disabled="taskIsActive || submitting"
           @click="setMode('generate')"
         >
           <WandSparkles :size="16" aria-hidden="true" />
-          文生图
+          用文字画
         </button>
         <button
           type="button"
           role="tab"
           :aria-selected="mode === 'edit'"
           :class="{ 'is-active': mode === 'edit' }"
+          :disabled="taskIsActive || submitting"
           @click="setMode('edit')"
         >
           <Images :size="16" aria-hidden="true" />
-          图生图
+          按图片改
         </button>
       </div>
-      <div class="workspace-status">
+      <div class="workspace-status" aria-live="polite">
         <span class="status-dot" :class="{ 'status-dot--ready': publicSettings?.generationReady }" />
         <span v-if="settingsLoading">正在检查生成服务</span>
-        <span v-else-if="publicSettings?.generationReady">生成服务已连接 · {{ statusLabel }}</span>
-        <span v-else>基础账户功能可用 · 请管理员配置生成服务</span>
+        <span v-else-if="publicSettings?.generationReady">
+          {{ stageVisible ? statusLabel : '可以开始创作' }}
+        </span>
+        <span v-else>生成服务暂未连接，账户功能仍可使用</span>
       </div>
       <div class="toolbar-meta">
-        <span>保留 {{ publicSettings?.retentionDays ?? 7 }} 天</span>
+        <span>图片保留 {{ publicSettings?.retentionDays ?? 7 }} 天</span>
         <span>PNG</span>
       </div>
     </div>
 
-    <div class="studio-layout">
-      <div
-        v-if="mobileControlsOpen"
-        class="controls-backdrop"
-        aria-hidden="true"
-        @click="mobileControlsOpen = false"
-      />
-
-      <aside class="control-rail" :class="{ 'is-open': mobileControlsOpen }">
-        <div class="mobile-rail-head">
-          <div>
-            <strong>创作参数</strong>
-            <span>{{ mode === 'generate' ? '文生图' : '图生图' }}</span>
-          </div>
-          <button
-            type="button"
-            class="icon-button"
-            aria-label="关闭参数"
-            @click="mobileControlsOpen = false"
-          >
-            <X :size="18" aria-hidden="true" />
-          </button>
-        </div>
-
-        <section class="tool-card prompt-card">
-          <div class="card-heading">
-            <div>
-              <span class="card-index">01</span>
-              <h2>描述画面</h2>
-            </div>
-            <span class="char-count">{{ prompt.length }} / 4000</span>
-          </div>
-          <textarea
-            v-model="prompt"
-            maxlength="4000"
-            rows="6"
-            placeholder="描述光线、材质、构图和情绪。越具体，画面越接近你的想象。"
-            aria-label="画面提示词"
-          />
-          <div class="prompt-suggestions" aria-label="提示词示例">
-            <button
-              v-for="(sample, index) in samplePrompts"
-              :key="sample"
-              type="button"
-              @click="choosePrompt(sample)"
-            >
-              示例 {{ index + 1 }}
-            </button>
-          </div>
-        </section>
-
-        <section v-if="mode === 'edit'" class="tool-card reference-card">
-          <div class="card-heading">
-            <div>
-              <span class="card-index">02</span>
-              <h2>参考图</h2>
-            </div>
-            <span class="char-count">{{ references.length }} / 4</span>
-          </div>
-          <input
-            ref="fileInput"
-            class="visually-hidden"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            multiple
-            @change="handleFiles"
-          />
-          <div class="reference-grid">
-            <div v-for="reference in references" :key="reference.id" class="reference-item">
-              <img :src="reference.url" :alt="reference.file.name" />
-              <button
-                type="button"
-                :aria-label="`移除 ${reference.file.name}`"
-                :title="`移除 ${reference.file.name}`"
-                @click="removeReference(reference.id)"
-              >
-                <X :size="14" aria-hidden="true" />
-              </button>
-            </div>
-            <button
-              v-if="references.length < 4"
-              type="button"
-              class="reference-add"
-              @click="openFilePicker"
-            >
-              <Upload :size="18" aria-hidden="true" />
-              <span>添加图片</span>
-            </button>
-          </div>
-          <p class="card-note">PNG、JPEG、WebP，单张不超过 10 MB</p>
-          <p v-if="uploadError" class="field-error" role="alert">{{ uploadError }}</p>
-        </section>
-
-        <section class="tool-card parameters-card">
-          <div class="card-heading">
-            <div>
-              <span class="card-index">{{ mode === 'edit' ? '03' : '02' }}</span>
-              <h2>画面参数</h2>
-            </div>
-            <SlidersHorizontal :size="17" aria-hidden="true" />
-          </div>
-
-          <div class="parameter-block">
-            <span class="parameter-label">画幅比例</span>
-            <div class="size-options" role="radiogroup" aria-label="画幅比例">
-              <button
-                v-for="ratio in aspectRatioOptions"
-                :key="ratio.value"
-                type="button"
-                role="radio"
-                :aria-checked="selectedAspectRatio === ratio.value"
-                :aria-disabled="ratio.value === 'original' && !originalRatioAvailable"
-                :disabled="ratio.value === 'original' && !originalRatioAvailable"
-                :class="{ 'is-selected': selectedAspectRatio === ratio.value }"
-                :title="
-                  ratio.value === 'original' && !originalRatioAvailable
-                    ? '原始比例需要图生图参考图'
-                    : undefined
-                "
-                @click="selectAspectRatio(ratio.value)"
-              >
-                <span
-                  class="size-shape"
-                  :class="`size-shape--${ratio.shape}`"
-                />
-                <span>
-                  <strong>{{ ratio.label }}</strong>
-                  <small>{{ ratio.ratio }}</small>
-                </span>
-              </button>
-            </div>
-          </div>
-
-          <div class="parameter-block resolution-block">
-            <div class="resolution-heading">
-              <span class="parameter-label">分辨率</span>
-              <strong>{{ selectedResolution }} · {{ requestedSize }}</strong>
-            </div>
-            <div class="resolution-slider">
-              <input
-                v-model.number="resolutionIndex"
-                type="range"
-                min="0"
-                :max="resolutionOptions.length - 1"
-                step="1"
-                aria-label="分辨率档位"
-              />
-              <div class="resolution-marks">
-                <button
-                  v-for="option in resolutionOptions"
-                  :key="option.value"
-                  type="button"
-                  :class="{ 'is-active': selectedResolution === option.value }"
-                  @click="selectedResolution = option.value"
-                >
-                  <strong>{{ option.label }}</strong>
-                  <small>{{ option.description }}</small>
-                  <span>{{ publicSettings?.pricing[option.value] ?? '—' }} 积分</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <label class="parameter-block">
-            <span class="parameter-label">质量</span>
-            <span class="select-wrap">
-              <select v-model="quality">
-                <option v-for="option in qualityOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
-              <ChevronDown :size="16" aria-hidden="true" />
-            </span>
-          </label>
-
-          <label class="parameter-block">
-            <span class="parameter-label">背景</span>
-            <span class="select-wrap">
-              <select v-model="background">
-                <option
-                  v-for="option in backgroundOptions"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </option>
-              </select>
-              <ChevronDown :size="16" aria-hidden="true" />
-            </span>
-          </label>
-
-          <div class="parameter-block count-block">
-            <span class="parameter-label">生成张数</span>
-            <div class="stepper" aria-label="生成张数">
-              <button
-                type="button"
-                aria-label="减少生成张数"
-                :disabled="count <= 1"
-                @click="decrementCount"
-              >
-                <Minus :size="15" aria-hidden="true" />
-              </button>
-              <strong>{{ count }}</strong>
-              <button
-                type="button"
-                aria-label="增加生成张数"
-                :disabled="count >= 4"
-                @click="incrementCount"
-              >
-                <Plus :size="15" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <div class="estimate-row">
-          <div>
-            <span>本次预计</span>
-            <strong>{{ totalCost }} <small>积分</small></strong>
-          </div>
-          <span>{{ count }} 张 × {{ unitCost }}</span>
-        </div>
-
-        <div v-if="submitError" class="inline-alert inline-alert--error" role="alert">
-          {{ submitError }}
-        </div>
-        <button
-          class="button button--primary button--wide generate-button"
-          type="button"
-          :disabled="!canSubmit"
-          @click="submitGeneration"
-        >
-          <LoaderCircle v-if="submitting || taskIsActive" class="spin" :size="18" aria-hidden="true" />
-          <Aperture v-else :size="18" aria-hidden="true" />
-          <span v-if="submitting">正在提交</span>
-          <span v-else-if="taskIsActive">{{ statusLabel }}</span>
-          <span v-else-if="publicSettings?.generationReady">开始生成</span>
-          <span v-else>生成服务未连接</span>
-        </button>
-        <p class="rail-footnote">
-          按成功输出逐张结算。失败或超时的图片会释放对应冻结积分。
-        </p>
-      </aside>
-
-      <section class="workspace">
+    <div class="studio-layout" :class="{ 'is-creating': stageVisible }">
+      <section
+        v-if="stageVisible"
+        ref="generationStage"
+        class="workspace"
+        aria-label="创作画布"
+      >
         <article class="canvas-card">
           <header class="canvas-head">
-            <div>
+            <div class="canvas-head__copy">
               <span class="canvas-live">
-                <i :class="{ 'is-processing': taskIsActive, 'is-error': activeStatus === 'failed' }" />
+                <i
+                  :class="{
+                    'is-processing': submitting || taskIsActive,
+                    'is-error': activeStatus === 'failed' || stageError,
+                    'is-ready': activeStatus === 'succeeded',
+                  }"
+                />
                 {{ statusLabel }}
               </span>
               <span class="canvas-size">
-                {{ selectedOutput?.asset ? `${selectedOutput.asset.width} × ${selectedOutput.asset.height}` : requestedSize }} · PNG
+                {{
+                  selectedOutput?.asset
+                    ? `${selectedOutput.asset.width} × ${selectedOutput.asset.height}`
+                    : requestedSize
+                }}
+                · PNG
               </span>
             </div>
             <button
+              v-if="selectedOutput?.asset"
               type="button"
               class="icon-button"
-              aria-label="全屏预览画布"
-              title="全屏预览"
+              aria-label="全屏查看作品"
+              title="全屏查看"
               @click="openPreview"
             >
               <Expand :size="18" aria-hidden="true" />
@@ -1024,60 +853,105 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="canvas-frame"
-            :style="{ '--canvas-ratio': canvasRatio }"
-            :aria-label="selectedOutput?.asset ? '打开生成结果预览' : '打开画布预览'"
+            :class="{ 'is-result': Boolean(selectedOutput?.asset) }"
+            :style="{ '--canvas-ratio': canvasRatio, '--canvas-aspect': canvasAspect }"
+            :disabled="!selectedOutput?.asset"
+            :aria-label="selectedOutput?.asset ? '全屏查看生成结果' : statusLabel"
             @click="openPreview"
           >
-            <ProtectedImage
-              v-if="selectedOutput?.asset"
-              :key="selectedOutput.asset.id"
-              :asset-id="selectedOutput.asset.id"
-              :alt="activeGeneration?.prompt || '生成结果'"
-              class="canvas-result-image"
-            />
-            <div v-else-if="taskIsActive" class="canvas-task-state">
+            <span v-if="selectedOutput?.asset" class="canvas-media">
+              <ProtectedImage
+                :key="selectedOutput.asset.id"
+                :asset-id="selectedOutput.asset.id"
+                :alt="activeGeneration?.prompt || '生成结果'"
+                class="canvas-result-image"
+              />
+            </span>
+
+            <div
+              v-else-if="submitting || taskIsActive"
+              class="canvas-task-state"
+              aria-live="polite"
+            >
               <span class="canvas-task-mark">
-                <LoaderCircle class="spin" :size="26" aria-hidden="true" />
+                <LoaderCircle class="spin" :size="28" aria-hidden="true" />
               </span>
-              <strong>{{ statusLabel }}</strong>
-              <span>{{ statusHint }}</span>
-              <div class="task-progress">
+              <strong>{{ submitting ? '正在提交你的想法' : statusLabel }}</strong>
+              <span>{{ submitting ? '马上就会开始绘制' : statusHint }}</span>
+              <ol class="render-steps" aria-label="生成进度">
+                <li
+                  v-for="(stage, index) in renderStages"
+                  :key="stage"
+                  :class="{
+                    'is-complete': renderStep > index + 1,
+                    'is-current': renderStep === index + 1,
+                  }"
+                >
+                  <span>
+                    <CheckCircle2
+                      v-if="renderStep > index + 1"
+                      :size="14"
+                      aria-hidden="true"
+                    />
+                    <template v-else>{{ index + 1 }}</template>
+                  </span>
+                  <strong>{{ stage }}</strong>
+                </li>
+              </ol>
+              <div v-if="activeGeneration?.outputs.length" class="task-progress">
                 <i
-                  v-for="(output, index) in activeGeneration?.outputs"
+                  v-for="(output, index) in activeGeneration.outputs"
                   :key="output.id"
-                  :class="{ 'is-done': output.status === 'succeeded', 'is-error': output.status === 'failed' }"
+                  :class="{
+                    'is-done': output.status === 'succeeded',
+                    'is-error': output.status === 'failed',
+                  }"
+                  :title="`第 ${index + 1} 张`"
                 >
                   {{ index + 1 }}
                 </i>
               </div>
             </div>
+
+            <div v-else-if="stageError" class="canvas-task-state canvas-task-state--error">
+              <span class="canvas-task-mark">
+                <CircleAlert :size="27" aria-hidden="true" />
+              </span>
+              <strong>还没有开始生成</strong>
+              <span>{{ submitError }} 你可以在下方检查设置后重新提交。</span>
+            </div>
+
             <div
-              v-else-if="activeGeneration && ['failed', 'partially_succeeded'].includes(activeGeneration.status) && !selectedOutput?.asset"
+              v-else-if="
+                activeGeneration &&
+                ['failed', 'partially_succeeded'].includes(activeGeneration.status)
+              "
               class="canvas-task-state canvas-task-state--error"
             >
               <span class="canvas-task-mark">
-                <CircleAlert :size="26" aria-hidden="true" />
+                <CircleAlert :size="27" aria-hidden="true" />
               </span>
               <strong>{{ statusLabel }}</strong>
               <span>{{ statusHint }}</span>
             </div>
-            <img v-else :src="canvasFluid" alt="蓝橙两色油墨在水中扩散的抽象画面" />
-            <span class="canvas-preview-badge">
-              {{ selectedOutput?.asset ? '生成结果' : taskIsActive ? '显影中' : '视觉预览' }}
-            </span>
-            <span class="canvas-frame__meta">
-              <span>{{ selectedOutput?.asset ? `${selectedOutput.asset.width} × ${selectedOutput.asset.height}` : canvasLabel }}</span>
-              <span>gpt-image-2</span>
-            </span>
+
+            <div v-else class="canvas-task-state">
+              <span class="canvas-task-mark">
+                <Sparkles :size="26" aria-hidden="true" />
+              </span>
+              <strong>画布准备中</strong>
+              <span>图片完成后会在这里慢慢显现。</span>
+            </div>
           </button>
 
-          <div v-if="activeGeneration?.outputs.length" class="output-strip">
+          <div v-if="activeGeneration?.outputs.length" class="output-strip" aria-label="本次生成图片">
             <button
               v-for="output in activeGeneration.outputs"
               :key="output.id"
               type="button"
               :class="{ 'is-selected': selectedAssetId === output.asset?.id }"
               :disabled="!output.asset"
+              :aria-label="output.asset ? `查看第 ${output.position} 张` : `第 ${output.position} 张处理中`"
               @click="selectOutput(output)"
             >
               <ProtectedImage
@@ -1087,7 +961,12 @@ onBeforeUnmount(() => {
                 thumbnail
               />
               <span v-else class="output-strip__state">
-                <LoaderCircle v-if="['queued', 'running'].includes(output.status)" class="spin" :size="15" aria-hidden="true" />
+                <LoaderCircle
+                  v-if="['queued', 'running'].includes(output.status)"
+                  class="spin"
+                  :size="15"
+                  aria-hidden="true"
+                />
                 <CircleAlert v-else :size="15" aria-hidden="true" />
               </span>
               <small>{{ String(output.position).padStart(2, '0') }}</small>
@@ -1097,9 +976,13 @@ onBeforeUnmount(() => {
           <footer class="canvas-foot">
             <div>
               <CheckCircle2 v-if="activeStatus === 'succeeded'" :size="16" aria-hidden="true" />
-              <CircleAlert v-else-if="activeStatus === 'failed'" :size="16" aria-hidden="true" />
+              <CircleAlert
+                v-else-if="activeStatus === 'failed' || stageError"
+                :size="16"
+                aria-hidden="true"
+              />
               <Sparkles v-else :size="16" aria-hidden="true" />
-              <span>{{ statusHint }}</span>
+              <span>{{ stageError ? submitError : statusHint }}</span>
             </div>
             <div v-if="selectedOutput?.asset" class="canvas-actions">
               <button
@@ -1110,8 +993,10 @@ onBeforeUnmount(() => {
                 :disabled="favoriteSaving"
                 @click.stop="toggleFavorite"
               >
+                <LoaderCircle v-if="favoriteSaving" class="spin" :size="16" aria-hidden="true" />
                 <Heart
-                  :size="16"
+                  v-else
+                  :size="17"
                   :fill="selectedOutput.asset.isFavorite ? 'currentColor' : 'none'"
                   aria-hidden="true"
                 />
@@ -1125,100 +1010,341 @@ onBeforeUnmount(() => {
                 @click.stop="downloadCurrent"
               >
                 <LoaderCircle v-if="downloading" class="spin" :size="16" aria-hidden="true" />
-                <Download v-else :size="16" aria-hidden="true" />
+                <Download v-else :size="17" aria-hidden="true" />
               </button>
             </div>
-            <span v-else-if="!activeGeneration">预览图仅作界面验收</span>
           </footer>
         </article>
+      </section>
 
-        <section class="contact-sheet">
-          <header class="contact-head">
-            <div>
-              <span class="card-index">RECENT</span>
-              <h2>最近结果</h2>
-            </div>
-            <RouterLink to="/history">查看全部</RouterLink>
-          </header>
+      <aside ref="editorPanel" class="control-rail" aria-label="创作设置">
+        <div v-if="stageVisible" class="editor-heading">
+          <div>
+            <span>{{ stageVisible ? '继续编辑' : '开始创作' }}</span>
+            <h2>{{ stageVisible ? '调整下一张' : '说出你想要的画面' }}</h2>
+          </div>
+          <span v-if="stageVisible" class="editor-heading__note">
+            {{ taskIsActive || submitting ? '生成时参数会暂时锁定' : '可以继续修改后再次生成' }}
+          </span>
+        </div>
 
-          <div v-if="recentAssets.length" class="recent-grid">
+        <section class="tool-card prompt-card">
+          <div class="card-heading">
+            <h2>描述你想要的画面</h2>
+            <span class="char-count">{{ prompt.length }} / 4000</span>
+          </div>
+          <textarea
+            v-model="prompt"
+            maxlength="4000"
+            rows="5"
+            placeholder="比如：一位穿白裙子的女孩站在窗边，午后的光很柔和……"
+            aria-label="描述你想要的画面"
+            :disabled="taskIsActive || submitting"
+          />
+          <div class="prompt-suggestions" aria-label="描述参考">
             <button
-              v-for="item in recentAssets"
-              :key="item.asset.id"
+              v-for="(sample, index) in samplePrompts"
+              :key="sample"
               type="button"
-              class="recent-card"
-              @click="router.push(`/history/${item.generationId}`)"
+              :disabled="taskIsActive || submitting"
+              @click="choosePrompt(sample)"
             >
-              <span class="recent-card__image">
-                <ProtectedImage
-                  :asset-id="item.asset.id"
-                  :alt="item.output.errorMessage || '最近生成作品'"
-                  thumbnail
-                />
-              </span>
-              <span class="recent-card__meta">
-                <span>{{ item.asset.width }} × {{ item.asset.height }}</span>
-                <span>{{ item.output.creditsCharged }} 积分</span>
-                <Heart
-                  v-if="item.asset.isFavorite"
-                  :size="12"
-                  fill="currentColor"
-                  aria-label="已收藏"
-                />
-              </span>
+              试试灵感 {{ index + 1 }}
             </button>
           </div>
-          <div v-else class="contact-empty">
-            <div class="contact-empty__mark">
-              <ImagePlus :size="24" :stroke-width="1.5" aria-hidden="true" />
+
+          <div class="quick-settings">
+            <label class="quick-control">
+              <span>图片比例</span>
+              <span class="select-wrap">
+                <select
+                  v-model="selectedAspectRatio"
+                  aria-label="图片比例"
+                  :disabled="taskIsActive || submitting"
+                >
+                  <option
+                    v-for="ratio in aspectRatioOptions"
+                    :key="ratio.value"
+                    :value="ratio.value"
+                    :disabled="ratio.value === 'original' && !originalRatioAvailable"
+                  >
+                    {{ ratio.label }} · {{ ratio.ratio }}
+                  </option>
+                </select>
+                <ChevronDown :size="15" aria-hidden="true" />
+              </span>
+            </label>
+
+            <div class="quick-control">
+              <span>清晰度</span>
+              <div class="resolution-toggle" role="radiogroup" aria-label="清晰度">
+                <button
+                  v-for="option in resolutionOptions"
+                  :key="option.value"
+                  type="button"
+                  role="radio"
+                  :aria-checked="selectedResolution === option.value"
+                  :class="{ 'is-selected': selectedResolution === option.value }"
+                  :disabled="taskIsActive || submitting"
+                  @click="selectedResolution = option.value"
+                >
+                  <strong>{{ option.label }}</strong>
+                  <small>{{ option.description }}</small>
+                </button>
+              </div>
             </div>
-            <div>
-              <strong>接触印样等待第一张作品</strong>
-              <p>完成的图片会按时间显示在这里，并保留 {{ publicSettings?.retentionDays ?? 7 }} 天。</p>
-            </div>
-            <div class="contact-slots" aria-hidden="true">
-              <span>01</span>
-              <span>02</span>
-              <span>03</span>
-              <span>04</span>
+
+            <div class="quick-control">
+              <span>生成几张</span>
+              <div class="stepper" aria-label="生成几张">
+                <button
+                  type="button"
+                  aria-label="减少生成张数"
+                  :disabled="count <= 1 || taskIsActive || submitting"
+                  @click="decrementCount"
+                >
+                  <Minus :size="15" aria-hidden="true" />
+                </button>
+                <strong>{{ count }}</strong>
+                <button
+                  type="button"
+                  aria-label="增加生成张数"
+                  :disabled="count >= 4 || taskIsActive || submitting"
+                  @click="incrementCount"
+                >
+                  <Plus :size="15" aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
+
+          <button
+            type="button"
+            class="advanced-toggle"
+            :aria-expanded="advancedOpen"
+            @click="advancedOpen = !advancedOpen"
+          >
+            <SlidersHorizontal :size="16" aria-hidden="true" />
+            {{ advancedOpen ? '收起详细设置' : '更多设置' }}
+            <ChevronDown :size="15" :class="{ 'is-open': advancedOpen }" aria-hidden="true" />
+          </button>
         </section>
-      </section>
+
+        <section v-if="mode === 'edit'" class="tool-card reference-card">
+          <div class="card-heading">
+            <h2>添加参考图</h2>
+            <span class="char-count">{{ references.length }} / 4</span>
+          </div>
+          <input
+            ref="fileInput"
+            class="visually-hidden"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            :disabled="taskIsActive || submitting"
+            @change="handleFiles"
+          />
+          <div class="reference-grid">
+            <div v-for="reference in references" :key="reference.id" class="reference-item">
+              <img :src="reference.url" :alt="reference.file.name" />
+              <button
+                type="button"
+                :aria-label="`移除 ${reference.file.name}`"
+                :title="`移除 ${reference.file.name}`"
+                :disabled="taskIsActive || submitting"
+                @click="removeReference(reference.id)"
+              >
+                <X :size="14" aria-hidden="true" />
+              </button>
+            </div>
+            <button
+              v-if="references.length < 4"
+              type="button"
+              class="reference-add"
+              :disabled="taskIsActive || submitting"
+              @click="openFilePicker"
+            >
+              <Upload :size="18" aria-hidden="true" />
+              <span>添加图片</span>
+            </button>
+          </div>
+          <p class="card-note">支持 PNG、JPEG、WebP，单张不超过 10 MB</p>
+          <p v-if="uploadError" class="field-error" role="alert">{{ uploadError }}</p>
+        </section>
+
+        <Transition name="advanced">
+          <section v-if="advancedOpen" class="tool-card parameters-card">
+            <div class="card-heading">
+              <h2>详细设置</h2>
+              <SlidersHorizontal :size="17" aria-hidden="true" />
+            </div>
+
+            <div class="parameter-block">
+              <span class="parameter-label">画幅比例</span>
+              <div class="size-options" role="radiogroup" aria-label="画幅比例">
+                <button
+                  v-for="ratio in aspectRatioOptions"
+                  :key="ratio.value"
+                  type="button"
+                  role="radio"
+                  :aria-checked="selectedAspectRatio === ratio.value"
+                  :aria-disabled="ratio.value === 'original' && !originalRatioAvailable"
+                  :disabled="
+                    (ratio.value === 'original' && !originalRatioAvailable) ||
+                    taskIsActive ||
+                    submitting
+                  "
+                  :class="{ 'is-selected': selectedAspectRatio === ratio.value }"
+                  :title="
+                    ratio.value === 'original' && !originalRatioAvailable
+                      ? '原始比例需要参考图'
+                      : undefined
+                  "
+                  @click="selectAspectRatio(ratio.value)"
+                >
+                  <span class="size-shape" :class="`size-shape--${ratio.shape}`" />
+                  <span>
+                    <strong>{{ ratio.label }}</strong>
+                    <small>{{ ratio.ratio }}</small>
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div class="parameter-block resolution-block">
+              <div class="resolution-heading">
+                <span class="parameter-label">分辨率</span>
+                <strong>{{ selectedResolution }} · {{ requestedSize }}</strong>
+              </div>
+              <div class="resolution-slider">
+                <input
+                  v-model.number="resolutionIndex"
+                  type="range"
+                  min="0"
+                  :max="resolutionOptions.length - 1"
+                  step="1"
+                  aria-label="分辨率档位"
+                  :disabled="taskIsActive || submitting"
+                />
+                <div class="resolution-marks">
+                  <button
+                    v-for="option in resolutionOptions"
+                    :key="option.value"
+                    type="button"
+                    :class="{ 'is-active': selectedResolution === option.value }"
+                    :disabled="taskIsActive || submitting"
+                    @click="selectedResolution = option.value"
+                  >
+                    <strong>{{ option.label }}</strong>
+                    <small>{{ option.description }}</small>
+                    <span>{{ publicSettings?.pricing[option.value] ?? '—' }} 积分</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <label class="parameter-block">
+              <span class="parameter-label">画面质量</span>
+              <span class="select-wrap">
+                <select v-model="quality" :disabled="taskIsActive || submitting">
+                  <option v-for="option in qualityOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+                <ChevronDown :size="16" aria-hidden="true" />
+              </span>
+            </label>
+
+            <label class="parameter-block">
+              <span class="parameter-label">背景</span>
+              <span class="select-wrap">
+                <select v-model="background" :disabled="taskIsActive || submitting">
+                  <option
+                    v-for="option in backgroundOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+                <ChevronDown :size="16" aria-hidden="true" />
+              </span>
+            </label>
+          </section>
+        </Transition>
+
+        <div class="action-dock">
+          <div class="estimate-row">
+            <div>
+              <span>预计使用</span>
+              <strong>{{ totalCost }} <small>积分</small></strong>
+            </div>
+            <span>{{ count }} 张 × {{ unitCost }}</span>
+          </div>
+
+          <div v-if="submitError" class="inline-alert inline-alert--error" role="alert">
+            {{ submitError }}
+          </div>
+          <button
+            class="button button--primary button--wide generate-button"
+            type="button"
+            :disabled="!canSubmit"
+            @click="submitGeneration"
+          >
+            <LoaderCircle
+              v-if="submitting || taskIsActive"
+              class="spin"
+              :size="18"
+              aria-hidden="true"
+            />
+            <Aperture v-else :size="18" aria-hidden="true" />
+            <span v-if="submitting">正在准备…</span>
+            <span v-else-if="taskIsActive">正在绘制…</span>
+            <span v-else-if="publicSettings?.generationReady">开始生成</span>
+            <span v-else>生成服务未连接</span>
+          </button>
+          <p class="rail-footnote">按成功生成的图片计费，失败或超时会退回积分。</p>
+        </div>
+      </aside>
     </div>
 
-    <div class="mobile-action-bar">
-      <button
-        type="button"
-        class="mobile-edit-button"
-        @click="mobileControlsOpen = true"
-      >
-        <SlidersHorizontal :size="18" aria-hidden="true" />
-        参数
-      </button>
-      <div class="mobile-estimate">
-        <span>{{ count }} 张</span>
-        <strong>{{ totalCost }} 积分</strong>
+    <Teleport to="body">
+      <div v-if="stageVisible" class="mobile-action-bar">
+        <button type="button" class="mobile-edit-button" @click="scrollToEditor">
+          <PencilLine :size="17" aria-hidden="true" />
+          编辑
+        </button>
+        <div class="mobile-estimate">
+          <span>{{ count }} 张</span>
+          <strong>{{ totalCost }} 积分</strong>
+        </div>
+        <button
+          type="button"
+          class="button button--primary"
+          :disabled="!canSubmit"
+          @click="submitGeneration"
+        >
+          <LoaderCircle
+            v-if="submitting || taskIsActive"
+            class="spin"
+            :size="16"
+            aria-hidden="true"
+          />
+          <span v-if="submitting">提交中</span>
+          <span v-else-if="taskIsActive">正在绘制</span>
+          <span v-else-if="publicSettings?.generationReady">开始生成</span>
+          <span v-else>暂未连接</span>
+        </button>
       </div>
-      <button
-        type="button"
-        class="button button--primary"
-        :disabled="!canSubmit"
-        @click="submitGeneration"
-      >
-        <LoaderCircle v-if="submitting || taskIsActive" class="spin" :size="16" aria-hidden="true" />
-        <span v-if="submitting">提交中</span>
-        <span v-else-if="taskIsActive">{{ statusLabel }}</span>
-        <span v-else-if="publicSettings?.generationReady">开始生成</span>
-        <span v-else>生成未连接</span>
-      </button>
-    </div>
+    </Teleport>
 
     <dialog ref="previewDialog" class="image-dialog" @click="closeDialogFromBackdrop">
       <div class="image-dialog__bar">
         <div>
-          <strong>{{ selectedOutput?.asset ? '生成结果' : '画布预览' }}</strong>
-          <span>{{ selectedOutput?.asset ? `${selectedOutput.asset.width} × ${selectedOutput.asset.height}` : requestedSize }} · PNG</span>
+          <strong>作品预览</strong>
+          <span v-if="selectedOutput?.asset">
+            {{ selectedOutput.asset.width }} × {{ selectedOutput.asset.height }} · PNG
+          </span>
         </div>
         <button type="button" class="icon-button" aria-label="关闭预览" @click="closePreview">
           <X :size="20" aria-hidden="true" />
@@ -1230,13 +1356,12 @@ onBeforeUnmount(() => {
         :alt="activeGeneration?.prompt || '生成结果'"
         class="dialog-result-image"
       />
-      <img v-else :src="canvasFluid" alt="蓝橙两色油墨在水中扩散的抽象画面" />
       <div class="image-dialog__note">
         <Info :size="16" aria-hidden="true" />
         <span v-if="selectedOutput?.asset">
-          {{ statusHint }} · 保留至 {{ new Date(selectedOutput.asset.expiresAt).toLocaleString('zh-CN') }}
+          {{ statusHint }} · 保留至
+          {{ new Date(selectedOutput.asset.expiresAt).toLocaleString('zh-CN') }}
         </span>
-        <span v-else>当前为界面视觉预览，尚未产生生成任务与积分消耗。</span>
       </div>
     </dialog>
   </div>
@@ -1263,7 +1388,7 @@ onBeforeUnmount(() => {
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: var(--candy-yellow-soft);
+  background: var(--surface-muted);
 }
 
 .mode-switch button {
@@ -1360,11 +1485,11 @@ onBeforeUnmount(() => {
 }
 
 .reference-card {
-  border-color: color-mix(in srgb, var(--candy-blue) 42%, var(--line));
+  border-color: var(--line);
 }
 
 .parameters-card {
-  border-color: color-mix(in srgb, var(--candy-yellow) 46%, var(--line));
+  border-color: var(--line);
 }
 
 .card-heading {
@@ -1852,7 +1977,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: 0 10px 26px color-mix(in srgb, var(--shadow-color) 50%, transparent);
-  border-color: color-mix(in srgb, var(--candy-mint) 40%, var(--line));
+  border-color: var(--line);
 }
 
 .canvas-head {
@@ -2143,7 +2268,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 0 16px;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--candy-blue-soft) 46%, var(--surface));
+  background: var(--surface-muted);
 }
 
 .contact-head > div {
@@ -2498,7 +2623,7 @@ onBeforeUnmount(() => {
 
   .mobile-action-bar {
     position: fixed;
-    z-index: 60;
+    z-index: 200;
     right: 0;
     bottom: 0;
     left: 0;
@@ -2613,6 +2738,1650 @@ onBeforeUnmount(() => {
 
   .recent-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Big-input-first studio flow */
+.studio-page {
+  width: min(1240px, calc(100% - 40px));
+  margin: 28px auto 76px;
+  padding-bottom: 0;
+}
+
+.studio-hero {
+  display: grid;
+  width: min(820px, 100%);
+  justify-items: center;
+  gap: 18px;
+  margin: 0 auto 18px;
+  text-align: center;
+  transition:
+    width 260ms var(--ease-out),
+    margin 260ms var(--ease-out);
+}
+
+.studio-hero__copy {
+  min-width: 0;
+}
+
+.studio-hero h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(42px, 6vw, 70px);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.04;
+}
+
+.studio-hero p {
+  max-width: 48ch;
+  margin: 13px auto 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.studio-page--creating .studio-hero {
+  width: min(1060px, 100%);
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-items: stretch;
+  align-items: end;
+  gap: 20px;
+  margin-top: 18px;
+  text-align: left;
+}
+
+.studio-page--creating .studio-hero h1 {
+  font-size: clamp(34px, 4.5vw, 50px);
+}
+
+.studio-page--creating .studio-hero p {
+  max-width: 56ch;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.studio-hero__status {
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.studio-hero__status i,
+.canvas-live i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--muted-soft);
+}
+
+.studio-hero__status i.is-active,
+.canvas-live i.is-processing {
+  background: var(--action);
+  animation: status-pulse 1.4s var(--ease-out) infinite;
+}
+
+.studio-hero__status i.is-ready,
+.canvas-live i.is-ready {
+  background: var(--success);
+}
+
+.studio-hero__status i.is-error,
+.canvas-live i.is-error {
+  background: var(--warning);
+}
+
+.status-fade-enter-active,
+.status-fade-leave-active {
+  transition:
+    opacity 180ms var(--ease-out),
+    transform 180ms var(--ease-out);
+}
+
+.status-fade-enter-from,
+.status-fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.studio-toolbar {
+  display: grid;
+  width: min(820px, 100%);
+  min-height: 48px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin: 0 auto 14px;
+  padding: 0;
+  transition: width 260ms var(--ease-out);
+}
+
+.studio-page--creating .studio-toolbar {
+  width: min(1060px, 100%);
+}
+
+.mode-switch {
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-muted);
+}
+
+.mode-switch button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    border-color 180ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    color 180ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.mode-switch button:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.mode-switch button.is-active {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+
+.mode-switch button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.workspace-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--warning);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.status-dot--ready {
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+.toolbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+}
+
+.studio-layout {
+  display: grid;
+  width: min(820px, 100%);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+  margin: 0 auto;
+}
+
+.studio-layout.is-creating {
+  width: min(1060px, 100%);
+  grid-template-areas:
+    'stage'
+    'editor';
+  gap: 22px;
+}
+
+.workspace {
+  display: grid;
+  min-width: 0;
+  grid-area: stage;
+  gap: 10px;
+  scroll-margin-top: 84px;
+  animation: studio-stage-enter 440ms var(--ease-out) both;
+}
+
+.control-rail {
+  position: static;
+  display: grid;
+  width: 100%;
+  max-height: none;
+  z-index: auto;
+  gap: 14px;
+  overflow: visible;
+  padding: 0;
+  scroll-margin-top: 80px;
+}
+
+.studio-layout.is-creating .control-rail {
+  grid-area: editor;
+}
+
+.editor-heading {
+  display: flex;
+  min-height: 42px;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 2px;
+}
+
+.editor-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.editor-heading > div > span,
+.editor-heading__note {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.editor-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 560;
+}
+
+.editor-heading__note {
+  max-width: 34ch;
+  line-height: 1.55;
+  text-align: right;
+}
+
+.tool-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.prompt-card,
+.reference-card,
+.parameters-card {
+  padding: 24px;
+}
+
+.prompt-card {
+  border-color: var(--line);
+}
+
+.reference-card,
+.parameters-card {
+  border-color: var(--line);
+}
+
+.card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.card-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.char-count,
+.parameter-label,
+.card-note {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.prompt-card textarea {
+  width: 100%;
+  min-height: 210px;
+  resize: vertical;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  outline: 0;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.75;
+  transition:
+    border-color 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out),
+    background-color 180ms var(--ease-out);
+}
+
+.studio-page--creating .prompt-card textarea {
+  min-height: 142px;
+}
+
+.prompt-card textarea:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+.prompt-card textarea:focus {
+  border-color: var(--action);
+  background: var(--surface);
+  box-shadow: 0 0 0 4px var(--focus-ring);
+}
+
+.prompt-card textarea::placeholder {
+  color: var(--muted-soft);
+}
+
+.prompt-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.prompt-suggestions button,
+.advanced-toggle {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  transition:
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.prompt-suggestions button:hover:not(:disabled),
+.advanced-toggle:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.prompt-suggestions button:active:not(:disabled),
+.advanced-toggle:active {
+  transform: scale(0.97);
+}
+
+.quick-settings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.quick-control {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.quick-control > span:first-child {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.select-wrap {
+  position: relative;
+  display: block;
+}
+
+.select-wrap select {
+  width: 100%;
+  height: 42px;
+  appearance: none;
+  padding: 0 36px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  outline: 0;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  transition:
+    border-color 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out);
+}
+
+.select-wrap select:focus {
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.select-wrap svg {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.resolution-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  min-height: 42px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.resolution-toggle button {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 180ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    color 180ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.resolution-toggle button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.resolution-toggle button.is-selected {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+
+.resolution-toggle strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.resolution-toggle small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepper {
+  display: inline-grid;
+  min-height: 42px;
+  grid-template-columns: 34px 38px 34px;
+  align-items: center;
+  justify-self: start;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.stepper button {
+  display: grid;
+  width: 34px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color 150ms var(--ease-out),
+    color 150ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.stepper button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.stepper button:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.stepper strong {
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 16px;
+}
+
+.advanced-toggle svg:last-child {
+  transition: transform 180ms var(--ease-out);
+}
+
+.advanced-toggle svg:last-child.is-open {
+  transform: rotate(180deg);
+}
+
+.advanced-enter-active,
+.advanced-leave-active {
+  transition:
+    opacity 180ms var(--ease-out),
+    transform 180ms var(--ease-out);
+}
+
+.advanced-enter-from,
+.advanced-leave-to {
+  opacity: 0;
+  transform: translateY(-5px);
+}
+
+.reference-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reference-item {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.reference-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reference-item button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(20 21 24 / 70%);
+  color: #fff;
+  cursor: pointer;
+}
+
+.reference-add {
+  display: flex;
+  aspect-ratio: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  transition:
+    border-color 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.reference-add:hover:not(:disabled) {
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.reference-add:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.card-note {
+  margin: 9px 0 0;
+  line-height: 1.55;
+}
+
+.parameters-card {
+  display: grid;
+  gap: 16px;
+}
+
+.parameters-card .card-heading {
+  margin-bottom: 0;
+}
+
+.parameter-block {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.size-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.size-options button {
+  display: flex;
+  min-width: 0;
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 180ms var(--ease-out),
+    color 180ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.size-options button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.size-options button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.size-options button.is-selected {
+  border-color: var(--action);
+  background: var(--action-soft);
+  color: var(--action);
+}
+
+.size-options button span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.size-options strong {
+  color: inherit;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.size-options small {
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+}
+
+.size-shape {
+  display: block;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+.size-shape--square {
+  width: 15px;
+  height: 15px;
+}
+
+.size-shape--landscape {
+  width: 18px;
+  height: 12px;
+}
+
+.size-shape--portrait {
+  width: 12px;
+  height: 18px;
+}
+
+.size-shape--wide {
+  width: 19px;
+  height: 11px;
+}
+
+.size-shape--tall {
+  width: 11px;
+  height: 19px;
+}
+
+.size-shape--classic {
+  width: 17px;
+  height: 13px;
+}
+
+.size-shape--classic-portrait {
+  width: 13px;
+  height: 17px;
+}
+
+.size-shape--ultra-wide {
+  width: 21px;
+  height: 9px;
+}
+
+.size-shape--ultra-tall {
+  width: 9px;
+  height: 21px;
+}
+
+.size-shape--original {
+  width: 15px;
+  height: 15px;
+  border-style: dashed;
+}
+
+.resolution-block {
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  background: var(--surface-muted);
+}
+
+.resolution-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resolution-heading strong {
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.resolution-slider {
+  display: grid;
+  gap: 5px;
+}
+
+.resolution-slider input[type='range'] {
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--action);
+  cursor: pointer;
+}
+
+.resolution-marks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.resolution-marks button {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 8px 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color 180ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    color 180ms var(--ease-out);
+}
+
+.resolution-marks button.is-active {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.resolution-marks strong {
+  color: inherit;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.resolution-marks small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resolution-marks span {
+  color: var(--action);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+}
+
+.action-dock {
+  display: grid;
+  gap: 10px;
+}
+
+.estimate-row {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  background: var(--surface-muted);
+}
+
+.estimate-row > div {
+  display: flex;
+  align-items: baseline;
+  gap: 11px;
+}
+
+.estimate-row span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.estimate-row strong {
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.estimate-row strong small {
+  color: var(--muted);
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.generate-button {
+  min-height: 50px;
+  font-size: 13px;
+}
+
+.generate-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.rail-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.canvas-card {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.canvas-head {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 14px 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.canvas-head__copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.canvas-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.canvas-size {
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+}
+
+.canvas-frame {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: clamp(380px, 56svh, 650px);
+  place-items: center;
+  overflow: hidden;
+  padding: clamp(18px, 4vw, 42px);
+  border: 0;
+  background: var(--canvas-bg);
+  cursor: zoom-in;
+}
+
+.canvas-frame:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.canvas-frame.is-result:hover .canvas-media {
+  transform: scale(0.997);
+}
+
+.canvas-media {
+  display: block;
+  width: min(100%, 960px, calc(min(62svh, 680px) * var(--canvas-aspect)));
+  aspect-ratio: var(--canvas-ratio);
+  overflow: hidden;
+  border-radius: var(--radius-thumb);
+  background: color-mix(in srgb, var(--surface) 50%, var(--surface-muted));
+  box-shadow:
+    0 1px 2px rgb(35 37 42 / 8%),
+    0 16px 38px rgb(35 37 42 / 12%);
+  transition: transform 180ms var(--ease-out);
+}
+
+.canvas-media :deep(.protected-image) {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.canvas-media :deep(.protected-image-state) {
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-task-state {
+  display: flex;
+  width: min(100%, 620px);
+  min-height: 360px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.canvas-task-state > strong {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 560;
+}
+
+.canvas-task-state > span:not(.canvas-task-mark) {
+  max-width: 46ch;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.canvas-task-mark {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 4px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--action);
+  box-shadow: var(--shadow-soft);
+}
+
+.canvas-task-state--error .canvas-task-mark {
+  color: var(--warning);
+}
+
+.render-steps {
+  display: grid;
+  width: min(100%, 460px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.render-steps li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.render-steps li:not(:last-child)::after {
+  position: absolute;
+  z-index: 0;
+  top: 13px;
+  left: calc(50% + 18px);
+  width: calc(100% - 36px);
+  height: 1px;
+  background: var(--line);
+  content: '';
+}
+
+.render-steps li.is-complete:not(:last-child)::after {
+  background: color-mix(in srgb, var(--success) 50%, var(--line));
+}
+
+.render-steps li > span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+}
+
+.render-steps li > strong {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.render-steps li.is-current > span {
+  border-color: var(--action);
+  background: var(--action);
+  color: #fff;
+}
+
+.render-steps li.is-current > strong {
+  color: var(--ink);
+}
+
+.render-steps li.is-complete > span {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--line));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  color: var(--success);
+}
+
+.task-progress {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.task-progress i {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  font-style: normal;
+}
+
+.task-progress i.is-done {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--line));
+  color: var(--success);
+}
+
+.task-progress i.is-error {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--line));
+  color: var(--warning);
+}
+
+.output-strip {
+  display: flex;
+  gap: 7px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.output-strip button {
+  position: relative;
+  display: grid;
+  width: 62px;
+  height: 52px;
+  flex: 0 0 62px;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 140ms var(--ease-out),
+    box-shadow 140ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.output-strip button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.output-strip button.is-selected {
+  border-color: var(--action);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.output-strip button:disabled {
+  cursor: wait;
+}
+
+.output-strip small {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  padding: 1px 3px;
+  border-radius: 4px;
+  background: rgb(20 21 24 / 66%);
+  color: #fff;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 7px;
+}
+
+.output-strip__state {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background: var(--surface-muted);
+}
+
+.canvas-foot {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 16px 0 20px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.canvas-foot > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.canvas-foot > div > span {
+  max-width: 70ch;
+  line-height: 1.5;
+}
+
+.canvas-actions {
+  flex: 0 0 auto;
+}
+
+.canvas-actions .icon-button {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+}
+
+.image-dialog {
+  width: min(1120px, calc(100vw - 28px));
+  max-width: none;
+  max-height: calc(100svh - 28px);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 28%);
+}
+
+.image-dialog::backdrop {
+  background: rgb(20 21 24 / 78%);
+  backdrop-filter: blur(8px);
+}
+
+.image-dialog__bar {
+  display: flex;
+  min-height: 60px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.image-dialog__bar div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.image-dialog__bar strong {
+  font-size: 13px;
+}
+
+.image-dialog__bar span {
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+}
+
+.image-dialog :deep(.dialog-result-image) {
+  display: block;
+  width: 100%;
+  max-height: calc(100svh - 154px);
+  object-fit: contain;
+  background: var(--canvas-bg);
+}
+
+.image-dialog__note {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.mobile-action-bar {
+  display: none;
+}
+
+.spin {
+  animation: studio-spin 800ms linear infinite;
+}
+
+@keyframes studio-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes studio-stage-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .studio-page {
+    width: min(100% - 20px, 760px);
+    margin-top: 20px;
+    padding-bottom: 88px;
+  }
+
+  .studio-page--creating .studio-hero {
+    align-items: start;
+    grid-template-columns: 1fr;
+  }
+
+  .studio-hero__status {
+    justify-self: start;
+  }
+
+  .studio-toolbar,
+  .studio-page--creating .studio-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .workspace-status {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding: 0 2px 2px;
+  }
+
+  .toolbar-meta {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .studio-layout,
+  .studio-layout.is-creating {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .control-rail {
+    position: static;
+    max-height: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .size-options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .canvas-frame {
+    min-height: 390px;
+  }
+
+  .mobile-action-bar {
+    position: fixed;
+    z-index: 200;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    min-height: 72px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 93%, transparent);
+    backdrop-filter: blur(18px);
+    isolation: isolate;
+    transform: translateZ(0);
+  }
+
+  .mobile-edit-button {
+    display: inline-flex;
+    min-height: 42px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface-muted);
+    color: var(--ink);
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  .mobile-estimate {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .mobile-estimate span {
+    color: var(--muted);
+    font-size: 9px;
+  }
+
+  .mobile-estimate strong {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .mobile-action-bar .button {
+    min-height: 42px;
+  }
+}
+
+@media (max-width: 620px) {
+  .studio-page {
+    width: calc(100% - 16px);
+    margin-top: 18px;
+  }
+
+  .studio-hero h1 {
+    font-size: 42px;
+  }
+
+  .studio-page--creating .studio-hero h1 {
+    font-size: 34px;
+  }
+
+  .studio-hero p {
+    font-size: 12px;
+  }
+
+  .studio-toolbar,
+  .studio-page--creating .studio-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-switch {
+    width: 100%;
+  }
+
+  .mode-switch button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .toolbar-meta {
+    display: none;
+  }
+
+  .workspace-status {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .editor-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .editor-heading__note {
+    text-align: left;
+  }
+
+  .prompt-card,
+  .reference-card,
+  .parameters-card {
+    padding: 18px;
+  }
+
+  .prompt-card textarea,
+  .studio-page--creating .prompt-card textarea {
+    min-height: 168px;
+    padding: 14px;
+    font-size: 15px;
+  }
+
+  .quick-settings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 10px;
+  }
+
+  .quick-settings .quick-control:last-child {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .size-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reference-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .canvas-head {
+    min-height: 50px;
+    padding: 0 10px 0 14px;
+  }
+
+  .canvas-head__copy {
+    gap: 8px;
+  }
+
+  .canvas-size {
+    display: none;
+  }
+
+  .canvas-frame {
+    min-height: 300px;
+    padding: 14px;
+  }
+
+  .canvas-task-state {
+    min-height: 280px;
+  }
+
+  .canvas-task-state > strong {
+    font-size: 20px;
+  }
+
+  .render-steps {
+    width: 100%;
+  }
+
+  .canvas-media {
+    width: 100%;
+  }
+
+  .canvas-foot {
+    min-height: 44px;
+    padding: 0 10px 0 14px;
+  }
+
+  .canvas-foot > div > span {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .output-strip {
+    padding: 8px 10px;
+  }
+
+  .image-dialog {
+    width: calc(100vw - 12px);
+    max-height: calc(100svh - 12px);
+  }
+
+  .image-dialog__bar {
+    min-height: 52px;
+    padding: 0 10px 0 14px;
+  }
+
+  .image-dialog__bar span {
+    display: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .mobile-edit-button {
+    width: 42px;
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .mobile-action-bar {
+    gap: 8px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .mobile-action-bar .button {
+    padding: 0 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-hero,
+  .studio-toolbar,
+  .canvas-media,
+  .advanced-toggle svg:last-child {
+    transition: none;
+  }
+
+  .workspace,
+  .studio-hero__status i.is-active,
+  .canvas-live i.is-processing {
+    animation: none;
   }
 }
 </style>

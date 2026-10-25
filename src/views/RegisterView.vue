@@ -100,7 +100,7 @@ onMounted(() => {
 
 <template>
   <AuthLayout
-    kicker="建立光桌"
+    kicker="创建账户"
     title="开始你的第一张作品"
     description="账户用于保存任务、积分与最近七天的作品记录。邮箱验证在首期默认关闭。"
   >

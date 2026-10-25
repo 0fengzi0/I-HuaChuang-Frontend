@@ -477,7 +477,7 @@ function auditLabel(action: string) {
   <div class="page-frame admin-page">
     <header class="page-heading">
       <div>
-        <span class="page-kicker">ADMIN / CONTROL ROOM</span>
+        <span class="page-kicker">运营后台</span>
         <h1>管理后台</h1>
         <p>管理用户额度、卡密批次、积分价格与系统保留期。所有管理员动作都会写入审计日志。</p>
       </div>
@@ -546,7 +546,7 @@ function auditLabel(action: string) {
             </article>
 
             <article class="admin-panel next-phase">
-              <span class="card-index">OPERATIONS</span>
+              <span class="card-index">运行状态</span>
               <h2>运行质量</h2>
               <div class="ops-metrics">
                 <div>
@@ -1022,22 +1022,6 @@ function auditLabel(action: string) {
   min-height: 144px;
   gap: 7px;
   padding: 16px;
-}
-
-.stat-card:nth-child(1) {
-  background: color-mix(in srgb, var(--candy-pink-soft) 66%, var(--surface));
-}
-
-.stat-card:nth-child(2) {
-  background: color-mix(in srgb, var(--candy-blue-soft) 68%, var(--surface));
-}
-
-.stat-card:nth-child(3) {
-  background: color-mix(in srgb, var(--candy-yellow-soft) 62%, var(--surface));
-}
-
-.stat-card:nth-child(4) {
-  background: color-mix(in srgb, var(--candy-mint-soft) 66%, var(--surface));
 }
 
 .stat-card > div {

@@ -142,7 +142,7 @@ function formatDate(value: string | undefined) {
   <div class="page-frame account-page">
     <header class="page-heading">
       <div>
-        <span class="page-kicker">ACCOUNT / ACCESS</span>
+        <span class="page-kicker">账户与访问</span>
         <h1>账户设置</h1>
         <p>查看账户身份、验证状态和界面偏好。工作台主题只保存在当前浏览器，同时同步到账户。</p>
       </div>
@@ -156,7 +156,7 @@ function formatDate(value: string | undefined) {
       <section class="profile-card">
         <div class="profile-avatar">{{ auth.user?.username.slice(0, 1) }}</div>
         <div class="profile-copy">
-          <span class="card-index">PROFILE</span>
+          <span class="card-index">个人资料</span>
           <h2>{{ auth.user?.username }}</h2>
           <p>{{ auth.user?.email }}</p>
         </div>
@@ -324,7 +324,7 @@ function formatDate(value: string | undefined) {
   display: grid;
   gap: 24px;
   padding: 24px;
-  background: color-mix(in srgb, var(--candy-mint-soft) 56%, var(--surface));
+  background: var(--surface-muted);
 }
 
 .profile-avatar {
@@ -334,9 +334,9 @@ function formatDate(value: string | undefined) {
   place-items: center;
   border: 1px solid var(--line-strong);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--candy-pink-soft) 74%, var(--surface));
+  background: var(--action-soft);
   color: var(--ink);
-  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
+  font-family: var(--font-display);
   font-size: 30px;
   font-weight: 600;
 }
@@ -344,7 +344,7 @@ function formatDate(value: string | undefined) {
 .profile-copy h2 {
   margin: 7px 0 2px;
   color: var(--ink);
-  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
+  font-family: var(--font-display);
   font-size: 30px;
   font-weight: 560;
 }

@@ -83,7 +83,7 @@ function formatDate(value: string) {
   <div class="page-frame history-page">
     <header class="page-heading">
       <div>
-        <span class="page-kicker">ARCHIVE / {{ settings?.retentionDays ?? 7 }} DAYS</span>
+        <span class="page-kicker">作品保存 {{ settings?.retentionDays ?? 7 }} 天</span>
         <h1>历史作品</h1>
         <p>按时间查看保留期内的任务、结果和失败原因。过期图片会自动清理，积分流水仍会保留。</p>
       </div>
@@ -171,9 +171,9 @@ function formatDate(value: string) {
           <span class="archive-frame archive-frame--far">03</span>
         </div>
         <div class="archive-empty__copy">
-          <span class="card-index">NO EXPOSURES</span>
+          <span class="card-index">还没有作品</span>
           <h2>{{ emptyTitle }}</h2>
-          <p>完成的图片会按接触印样顺序排列。你可以预览、下载、收藏或复用参数。</p>
+          <p>完成的图片会按时间排列。你可以预览、下载、收藏或复用参数。</p>
           <RouterLink class="button button--primary" to="/studio">
             <ListFilter :size="16" aria-hidden="true" />
             返回工作台
@@ -207,7 +207,7 @@ function formatDate(value: string) {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--surface) 91%, var(--candy-blue-soft));
+  background: var(--surface);
 }
 
 .history-toolbar {

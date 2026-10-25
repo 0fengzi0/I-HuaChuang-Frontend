@@ -87,7 +87,7 @@ defineProps<{
 .legal-aside h1 {
   margin: 12px 0 8px;
   color: var(--ink);
-  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(42px, 6vw, 72px);
   font-weight: 600;
   letter-spacing: 0;
@@ -103,9 +103,9 @@ defineProps<{
 .legal-placeholder {
   margin-top: 32px;
   padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--line));
+  border: 1px solid var(--line);
   border-radius: var(--radius-thumb);
-  background: color-mix(in srgb, var(--candy-yellow-soft) 78%, var(--surface));
+  background: var(--surface-muted);
   color: var(--muted);
   font-size: 10px;
   line-height: 1.7;

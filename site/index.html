@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#4a3338" />
+    <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"
       content="I画创是一套面向多用户的 AI 图片创作工作台，支持文生图、图生图、常用与原始比例、1K/2K 分辨率、积分结算和历史管理。"
@@ -11,7 +11,7 @@
     <meta property="og:title" content="I画创 · AI 图片创作工作台" />
     <meta
       property="og:description"
-      content="从一句描述到可继续工作的图片。真实可运行的 Vue + Go 图像创作平台。"
+      content="写下一句话，画面就在眼前展开。真实可运行的 Vue + Go 图像创作平台。"
     />
     <meta property="og:image" content="screenshots/studio-desktop.png" />
     <title>I画创 · AI 图片创作工作台</title>
@@ -24,18 +24,16 @@
     />
     <style>
       :root {
-        --paper: #fff2dd;
-        --paper-deep: #f8e4ce;
-        --ink: #493633;
-        --muted: #856e67;
-        --line: #ead3c4;
-        --night: #4a3338;
-        --night-soft: #5a3d43;
-        --action: #c93d67;
-        --signal: #d77546;
-        --success: #4f9e80;
-        --candy-blue: #75bde4;
-        --candy-yellow: #f1c95d;
+        --paper: #ffffff;
+        --surface-muted: #f7f8fa;
+        --surface-hover: #f2f4f7;
+        --ink: #23252a;
+        --muted: #777b84;
+        --line: #eceef1;
+        --line-strong: #d9dce1;
+        --action: #c8667d;
+        --action-hover: #b6546d;
+        --success: #3f8a6d;
         --content: min(1180px, calc(100vw - 48px));
         --display: "Fredoka", "Noto Sans SC", sans-serif;
         --body: "Noto Sans SC", sans-serif;
@@ -51,9 +49,7 @@
 
       body {
         margin: 0;
-        background-color: var(--paper);
-        background-image: radial-gradient(rgb(112 76 68 / 5%) 0.8px, transparent 0.8px);
-        background-size: 16px 16px;
+        background: var(--paper);
         color: var(--ink);
         font-family: var(--body);
         -webkit-font-smoothing: antialiased;
@@ -69,12 +65,19 @@
         max-width: 100%;
       }
 
+      button,
+      a:focus-visible {
+        outline-color: var(--action);
+      }
+
       .skip-link {
         position: fixed;
+        z-index: 20;
         top: 12px;
         left: 12px;
-        z-index: 20;
         padding: 10px 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
         background: var(--paper);
         color: var(--ink);
         transform: translateY(-160%);
@@ -84,37 +87,27 @@
         transform: translateY(0);
       }
 
-      .hero {
-        position: relative;
-        min-height: 92svh;
-        overflow: hidden;
-        background-color: var(--night);
-        background-image: url("screenshots/studio-desktop.png");
-        background-position: center 24%;
-        background-size: cover;
-        color: #f6f8f4;
+      .site-header {
+        position: sticky;
+        z-index: 10;
+        top: 0;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--paper) 94%, transparent);
+        backdrop-filter: blur(18px);
       }
 
-      .hero::before {
-        position: absolute;
-        inset: 0;
-        background: rgba(68, 44, 49, 0.72);
-        content: "";
-      }
-
-      .hero-inner {
-        position: relative;
-        z-index: 1;
-        display: grid;
+      .nav,
+      .hero,
+      .section,
+      footer {
         width: var(--content);
-        min-height: 92svh;
-        margin: 0 auto;
-        grid-template-rows: auto 1fr auto;
-        padding: 24px 0 38px;
+        margin-right: auto;
+        margin-left: auto;
       }
 
       .nav {
         display: flex;
+        min-height: 64px;
         align-items: center;
         justify-content: space-between;
         gap: 24px;
@@ -127,15 +120,15 @@
         font-family: var(--display);
         font-size: 20px;
         font-weight: 700;
-        letter-spacing: 0;
       }
 
       .brand-mark {
         position: relative;
-        width: 32px;
-        height: 32px;
-        border: 1px solid rgba(255, 255, 255, 0.48);
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--line-strong);
         border-radius: 12px;
+        background: var(--paper);
       }
 
       .brand-mark::before,
@@ -143,62 +136,68 @@
         position: absolute;
         width: 9px;
         height: 9px;
-        border-color: #ff7a4c;
+        border-color: var(--action);
         border-style: solid;
         content: "";
       }
 
       .brand-mark::before {
-        top: 5px;
-        left: 5px;
+        top: 6px;
+        left: 6px;
         border-width: 1px 0 0 1px;
       }
 
       .brand-mark::after {
-        right: 5px;
-        bottom: 5px;
+        right: 6px;
+        bottom: 6px;
         border-width: 0 1px 1px 0;
       }
 
       .nav-links {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
       }
 
       .nav-links a {
         padding: 9px 12px;
-        border-radius: 14px;
-        color: rgba(255, 255, 255, 0.72);
+        border-radius: 12px;
+        color: var(--muted);
         font-size: 13px;
+        transition:
+          background-color 160ms ease,
+          color 160ms ease;
       }
 
       .nav-links a:hover,
       .nav-links a:focus-visible {
-        background: rgba(255, 255, 255, 0.1);
-        color: #fff;
+        background: var(--surface-hover);
+        color: var(--ink);
+      }
+
+      .hero {
+        padding: 76px 0 28px;
+        text-align: center;
       }
 
       .hero-copy {
-        align-self: end;
-        width: min(780px, 100%);
-        padding: 80px 0 54px;
+        max-width: 860px;
+        margin: 0 auto;
       }
 
       .hero-kicker {
         display: inline-flex;
         align-items: center;
-        gap: 9px;
-        margin-bottom: 18px;
-        color: #ffd0a8;
-        font-family: var(--display);
-        font-size: 14px;
+        gap: 8px;
+        color: var(--action);
+        font-size: 12px;
         font-weight: 600;
       }
 
       .hero-kicker::before {
-        width: 28px;
-        height: 1px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
         background: currentColor;
         content: "";
       }
@@ -211,27 +210,27 @@
       }
 
       h1 {
-        max-width: 8ch;
-        margin-bottom: 24px;
+        margin: 16px 0 18px;
         font-family: var(--display);
-        font-size: clamp(88px, 15vw, 188px);
+        font-size: clamp(72px, 12vw, 136px);
         font-weight: 600;
         letter-spacing: 0;
-        line-height: 0.9;
+        line-height: 0.94;
       }
 
       .hero-lede {
         max-width: 650px;
-        margin-bottom: 30px;
-        color: rgba(255, 255, 255, 0.76);
-        font-size: clamp(17px, 2vw, 21px);
-        line-height: 1.75;
+        margin: 0 auto;
+        color: var(--muted);
+        font-size: clamp(16px, 1.8vw, 20px);
+        line-height: 1.8;
       }
 
       .hero-actions {
         display: flex;
-        flex-wrap: wrap;
+        justify-content: center;
         gap: 10px;
+        margin-top: 28px;
       }
 
       .button {
@@ -240,46 +239,68 @@
         align-items: center;
         justify-content: center;
         padding: 0 18px;
-        border: 1px solid rgba(255, 255, 255, 0.34);
-        border-radius: 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--paper);
+        color: var(--ink);
         font-size: 14px;
         font-weight: 600;
-      }
-
-      .button--primary {
-        border-color: #f2f5ee;
-        background: #f2f5ee;
-        color: var(--ink);
-      }
-
-      .button--secondary {
-        color: #f2f5ee;
+        transition:
+          border-color 160ms ease,
+          background-color 160ms ease,
+          transform 90ms ease;
       }
 
       .button:hover,
       .button:focus-visible {
-        border-color: #ff7a4c;
+        border-color: var(--line-strong);
+        background: var(--surface-hover);
+      }
+
+      .button:active {
+        transform: scale(0.98);
+      }
+
+      .button--primary {
+        border-color: var(--action);
+        background: var(--action);
+        color: #fff;
+        box-shadow: 0 8px 22px rgb(200 102 125 / 20%);
+      }
+
+      .button--primary:hover,
+      .button--primary:focus-visible {
+        border-color: var(--action-hover);
+        background: var(--action-hover);
+      }
+
+      .hero-preview {
+        display: block;
+        margin-top: 42px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--surface-muted);
+        box-shadow:
+          0 1px 2px rgb(35 37 42 / 5%),
+          0 20px 54px rgb(35 37 42 / 10%);
+      }
+
+      .hero-preview img {
+        width: 100%;
       }
 
       .hero-meta {
         display: flex;
-        align-items: center;
         justify-content: space-between;
         gap: 20px;
-        padding-top: 18px;
-        border-top: 1px solid rgba(255, 255, 255, 0.24);
-        color: rgba(255, 255, 255, 0.6);
-        font-size: 12px;
-      }
-
-      .hero-meta span:first-child {
-        color: rgba(255, 255, 255, 0.86);
+        padding: 16px 2px 0;
+        color: var(--muted);
+        font-size: 11px;
       }
 
       .section {
-        width: var(--content);
-        margin: 0 auto;
-        padding: 112px 0;
+        padding: 108px 0;
       }
 
       .section-heading {
@@ -287,58 +308,42 @@
         grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr);
         align-items: end;
         gap: 56px;
-        margin-bottom: 48px;
+        margin-bottom: 44px;
       }
 
       .section-heading h2 {
         max-width: 13ch;
         margin-bottom: 0;
         font-family: var(--display);
-        font-size: clamp(42px, 6vw, 72px);
+        font-size: clamp(40px, 6vw, 68px);
         font-weight: 600;
         letter-spacing: 0;
-        line-height: 1;
+        line-height: 1.02;
       }
 
       .section-heading p {
         max-width: 58ch;
         margin-bottom: 4px;
         color: var(--muted);
-        font-size: 16px;
-        line-height: 1.8;
-      }
-
-      .studio-frame {
-        position: relative;
-        padding: 12px;
-        border: 1px solid var(--line);
-        border-radius: 28px;
-        background: #fffdf8;
-        box-shadow:
-          0 3px 0 var(--line),
-          0 18px 42px rgb(92 54 47 / 13%);
-      }
-
-      .studio-frame img {
-        width: 100%;
-        border: 1px solid var(--line);
-        border-radius: 20px;
+        font-size: 15px;
+        line-height: 1.85;
       }
 
       .contact-strip {
         display: grid;
-        grid-template-columns: 1.35fr 0.85fr 0.85fr;
+        grid-template-columns: 1.3fr 0.85fr 0.85fr;
         gap: 12px;
         margin-top: 16px;
       }
 
       .contact-strip figure {
         position: relative;
-        min-height: 260px;
+        min-height: 250px;
         margin: 0;
         overflow: hidden;
-        border-radius: 22px;
-        background: var(--night-soft);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--surface-muted);
       }
 
       .contact-strip img {
@@ -353,70 +358,69 @@
         right: 10px;
         bottom: 10px;
         padding: 6px 9px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 10px;
-        background: rgba(10, 15, 14, 0.84);
-        color: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgb(255 255 255 / 24%);
+        border-radius: 9px;
+        background: rgb(20 21 24 / 74%);
+        color: rgb(255 255 255 / 88%);
         font-size: 11px;
       }
 
-      .dark-band {
-        background: var(--night);
-        color: #fff7ec;
+      .workflow-band {
+        background: var(--surface-muted);
       }
 
-      .dark-band .section {
+      .workflow-band .section {
         display: grid;
         grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
-        gap: 80px;
         align-items: start;
+        gap: 80px;
       }
 
-      .dark-band h2 {
+      .workflow-band h2 {
         max-width: 9ch;
-        margin-bottom: 24px;
+        margin-bottom: 22px;
         font-family: var(--display);
-        font-size: clamp(44px, 6vw, 78px);
-        font-weight: 500;
+        font-size: clamp(42px, 6vw, 72px);
+        font-weight: 600;
         letter-spacing: 0;
-        line-height: 0.98;
+        line-height: 1;
       }
 
-      .dark-band .intro {
+      .workflow-band .intro {
         max-width: 44ch;
-        color: rgba(237, 242, 234, 0.62);
-        font-size: 16px;
-        line-height: 1.8;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.85;
       }
 
       .flow-list {
-        border-top: 1px solid rgba(255, 255, 255, 0.2);
+        border-top: 1px solid var(--line-strong);
       }
 
       .flow-item {
         display: grid;
-        grid-template-columns: 150px minmax(0, 1fr);
-        gap: 32px;
-        padding: 28px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        grid-template-columns: 130px minmax(0, 1fr);
+        gap: 28px;
+        padding: 26px 0;
+        border-bottom: 1px solid var(--line-strong);
       }
 
       .flow-item strong {
-        color: var(--candy-yellow);
+        color: var(--action);
         font-family: var(--display);
-        font-size: 15px;
+        font-size: 14px;
       }
 
       .flow-item h3 {
-        margin-bottom: 8px;
-        font-size: 20px;
+        margin-bottom: 7px;
+        font-size: 19px;
         font-weight: 600;
       }
 
       .flow-item p {
         max-width: 60ch;
         margin-bottom: 0;
-        color: rgba(237, 242, 234, 0.58);
+        color: var(--muted);
         line-height: 1.75;
       }
 
@@ -426,7 +430,7 @@
 
       .feature-row {
         display: grid;
-        grid-template-columns: 220px minmax(0, 1fr) 180px;
+        grid-template-columns: 210px minmax(0, 1fr) 160px;
         gap: 28px;
         align-items: start;
         padding: 25px 0;
@@ -454,21 +458,21 @@
         font-weight: 600;
       }
 
-      .building {
+      .roadmap-layout {
         display: grid;
         grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
         gap: 72px;
-        padding: 70px 0;
+        padding-top: 70px;
         border-top: 1px solid var(--line);
       }
 
-      .building h2 {
+      .roadmap-layout h2 {
         max-width: 10ch;
         font-family: var(--display);
-        font-size: clamp(36px, 5vw, 62px);
+        font-size: clamp(36px, 5vw, 60px);
         font-weight: 600;
         letter-spacing: 0;
-        line-height: 1.02;
+        line-height: 1.03;
       }
 
       .roadmap {
@@ -479,7 +483,7 @@
 
       .roadmap li {
         display: grid;
-        grid-template-columns: 92px minmax(0, 1fr);
+        grid-template-columns: 88px minmax(0, 1fr);
         gap: 20px;
         padding: 18px 0;
         border-bottom: 1px solid var(--line);
@@ -496,14 +500,12 @@
       }
 
       footer {
-        padding: 38px 0 46px;
+        padding: 34px 0 46px;
         border-top: 1px solid var(--line);
       }
 
       .footer-inner {
         display: flex;
-        width: var(--content);
-        margin: 0 auto;
         align-items: center;
         justify-content: space-between;
         gap: 24px;
@@ -523,7 +525,7 @@
       }
 
       :focus-visible {
-        outline: 2px solid var(--signal);
+        outline: 2px solid var(--action);
         outline-offset: 3px;
       }
 
@@ -533,31 +535,17 @@
         }
 
         .hero {
-          min-height: 88svh;
-          background-position: center top;
-        }
-
-        .hero-inner {
-          min-height: 88svh;
-          padding-bottom: 24px;
-        }
-
-        .nav-links a:not(:last-child) {
-          display: none;
-        }
-
-        .hero-copy {
-          padding: 64px 0 38px;
+          padding-top: 58px;
         }
 
         h1 {
-          font-size: clamp(78px, 24vw, 136px);
+          font-size: clamp(68px, 22vw, 112px);
         }
 
         .hero-meta {
           align-items: flex-start;
           flex-direction: column;
-          gap: 6px;
+          gap: 5px;
         }
 
         .section {
@@ -565,8 +553,8 @@
         }
 
         .section-heading,
-        .dark-band .section,
-        .building {
+        .workflow-band .section,
+        .roadmap-layout {
           grid-template-columns: 1fr;
           gap: 30px;
         }
@@ -590,8 +578,16 @@
       }
 
       @media (max-width: 560px) {
+        .nav-links a:not(:last-child) {
+          display: none;
+        }
+
+        .brand {
+          font-size: 18px;
+        }
+
         .hero-lede {
-          font-size: 16px;
+          font-size: 15px;
         }
 
         .hero-actions {
@@ -603,6 +599,15 @@
           width: 100%;
         }
 
+        .hero-preview {
+          margin-top: 30px;
+          border-radius: 16px;
+        }
+
+        .section-heading h2 {
+          font-size: 38px;
+        }
+
         .contact-strip {
           grid-template-columns: 1fr;
         }
@@ -612,12 +617,13 @@
         }
 
         .contact-strip figure {
-          min-height: 230px;
+          min-height: 220px;
         }
 
-        .flow-item {
+        .flow-item,
+        .roadmap li {
           grid-template-columns: 1fr;
-          gap: 9px;
+          gap: 8px;
         }
 
         .footer-inner {
@@ -627,14 +633,19 @@
       }
 
       @media (prefers-reduced-motion: no-preference) {
-        .hero-copy {
-          animation: reveal 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        .hero-copy,
+        .hero-preview {
+          animation: enter 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
         }
 
-        @keyframes reveal {
+        .hero-preview {
+          animation-delay: 80ms;
+        }
+
+        @keyframes enter {
           from {
             opacity: 0;
-            transform: translateY(18px);
+            transform: translateY(12px);
           }
           to {
             opacity: 1;
@@ -646,82 +657,79 @@
   </head>
   <body>
     <a class="skip-link" href="#main">跳到主要内容</a>
-    <header class="hero">
-      <div class="hero-inner">
-        <nav class="nav" aria-label="主导航">
-          <a class="brand" href="./" aria-label="I画创首页">
-            <span class="brand-mark" aria-hidden="true"></span>
-            <span>I画创</span>
-          </a>
-          <div class="nav-links">
-            <a href="#workflow">生成流程</a>
-            <a href="#capabilities">功能</a>
-            <a href="#roadmap">开发进度</a>
-            <a href="app/">前端演示</a>
-            <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend">GitHub</a>
-          </div>
-        </nav>
+    <header class="site-header">
+      <nav class="nav" aria-label="主导航">
+        <a class="brand" href="./" aria-label="I画创首页">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>I画创</span>
+        </a>
+        <div class="nav-links">
+          <a href="#studio">创作界面</a>
+          <a href="#workflow">生成流程</a>
+          <a href="#capabilities">功能</a>
+          <a href="app/">打开演示</a>
+          <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend">GitHub</a>
+        </div>
+      </nav>
+    </header>
 
+    <main id="main">
+      <section class="hero" id="studio" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <span class="hero-kicker">多用户 AI 图片创作工作台</span>
-          <h1>I画创</h1>
+          <span class="hero-kicker">简单、安静的 AI 图片创作空间</span>
+          <h1 id="hero-title">I画创</h1>
           <p class="hero-lede">
-            从一句描述到可以继续工作的图片。文生图、图生图、原始比例、1K/2K
-            输出、积分结算和历史管理，收在同一张光桌上。
+            写下一句话，选好比例和清晰度。提交之后，画布来到眼前，描述和参数留在下方，想继续调整时不用重新寻找。
           </p>
           <div class="hero-actions">
             <a class="button button--primary" href="app/">打开前端演示</a>
             <a
-              class="button button--secondary"
+              class="button"
               href="https://github.com/0fengzi0/I-HuaChuang-Frontend"
               >查看源代码</a
             >
           </div>
         </div>
-
-        <div class="hero-meta">
-          <span>Vue 3 · Go · GPT Image API</span>
-          <span>前端演示使用内置数据，真实生成需要连接 Go 后端</span>
-        </div>
-      </div>
-    </header>
-
-    <main id="main">
-      <section class="section" aria-labelledby="studio-title">
-        <div class="section-heading">
-          <h2 id="studio-title">把创作留在同一个工作台</h2>
-          <p>
-            画面比例与分辨率分开选择，参数、预计积分、生成进度和真实结果始终在眼前。桌面端保持高密度工作区，移动端切换为完整参数抽屉。
-          </p>
-        </div>
-        <div class="studio-frame">
+        <a class="hero-preview" href="app/" aria-label="打开 I画创 创作工作台演示">
           <img
             src="screenshots/studio-desktop.png"
-            alt="I画创桌面工作台，包含画幅比例、1K/2K 分辨率、提示词和生成画布"
-            loading="lazy"
+            alt="I画创纯白创作工作台，首屏突出大输入框、图片比例、1K/2K 清晰度和生成按钮"
           />
+        </a>
+        <div class="hero-meta">
+          <span>Vue 3 · Go · GPT Image API</span>
+          <span>演示使用内置数据，真实生成需要连接 Go 后端</span>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="result-title">
+        <div class="section-heading">
+          <h2 id="result-title">画布成为画面，输入留在手边</h2>
+          <p>
+            生成开始后，作品画布自动展开并占据主要区域；完成后原图、下载、收藏和再次生成都在同一页完成。最近作品收进顶部抽屉，不再挤占创作空间。
+          </p>
         </div>
         <div class="contact-strip" aria-label="产品界面截图">
           <figure>
             <img
               src="screenshots/generation-result-desktop.png"
-              alt="生成结果与历史作品界面"
+              alt="生成完成后的作品画布，图片占据页面中心"
               loading="lazy"
             />
-            <figcaption>生成结果</figcaption>
+            <figcaption>画布优先</figcaption>
           </figure>
           <figure>
             <img
               src="screenshots/generation-detail-desktop.png"
-              alt="作品详情页，显示参数、状态和下载操作"
+              alt="作品详情页，显示尺寸、保留时间、下载和收藏"
               loading="lazy"
             />
-            <figcaption>详情与下载</figcaption>
+            <figcaption>作品详情</figcaption>
           </figure>
           <figure>
             <img
               src="screenshots/admin-settings-desktop.png"
-              alt="管理后台中转站与系统设置"
+              alt="纯白管理后台，展示价格、保留期和图像服务设置"
               loading="lazy"
             />
             <figcaption>运营后台</figcaption>
@@ -729,12 +737,12 @@
         </div>
       </section>
 
-      <section class="dark-band" id="workflow" aria-labelledby="workflow-title">
+      <section class="workflow-band" id="workflow" aria-labelledby="workflow-title">
         <div class="section">
           <div>
             <h2 id="workflow-title">一条完整的生成链路</h2>
             <p class="intro">
-              页面只负责表达和操作，服务端负责真正的校验、排队、调用、落盘与结算。
+              页面负责表达和操作，服务端负责校验、排队、调用、落盘与结算。
             </p>
           </div>
           <div class="flow-list">
@@ -742,7 +750,7 @@
               <strong>描述画面</strong>
               <div>
                 <h3>文字或参考图进入任务</h3>
-                <p>提示词、模式、比例和分辨率先经过服务端校验，不在浏览器里假装成功。</p>
+                <p>提示词、模式、比例和分辨率经过服务端校验，不在浏览器里假装成功。</p>
               </div>
             </div>
             <div class="flow-item">
@@ -753,10 +761,10 @@
               </div>
             </div>
             <div class="flow-item">
-              <strong>兼容上游</strong>
+              <strong>连接上游</strong>
               <div>
-                <h3>适配真实接口差异</h3>
-                <p>兼容 Base64、临时 URL、原始图片和流式响应，并将结果校正到所选尺寸。</p>
+                <h3>兼容真实接口差异</h3>
+                <p>兼容 Base64、临时 URL、原始图片与流式响应，并把结果校正到所选尺寸。</p>
               </div>
             </div>
             <div class="flow-item">
@@ -774,15 +782,15 @@
         <div class="section-heading">
           <h2 id="capabilities-title">为持续创作准备的基础</h2>
           <p>
-            I画创不是一次性生成页。账户、额度、运营配置和媒体生命周期被放在同一套产品结构里。
+            账户、额度、运营配置和媒体生命周期放进同一套产品结构，频繁创作时不需要来回切换工具。
           </p>
         </div>
         <div class="feature-ledger">
           <div class="feature-row">
             <h3>比例与分辨率</h3>
             <p>
-              支持方形、横幅、竖幅、宽屏、竖屏、经典和超宽比例，也可读取首张参考图的原始比例。输出只有
-              1K 与 2K 两档，避免上游无法兑现的规格。
+              支持方形、横幅、竖幅、宽屏、竖屏、经典和超宽比例，也可读取参考图的原始比例。输出提供
+              1K 与 2K 两档。
             </p>
             <span>已实现</span>
           </div>
@@ -810,7 +818,7 @@
       </section>
 
       <section class="section" id="roadmap" aria-labelledby="roadmap-title">
-        <div class="building">
+        <div class="roadmap-layout">
           <h2 id="roadmap-title">下一步，把真实环境跑透</h2>
           <ul class="roadmap">
             <li>
@@ -840,12 +848,8 @@
         <div class="footer-links">
           <a href="app/">前端演示</a>
           <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend">前端源代码</a>
-          <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend#readme"
-            >开发说明</a
-          >
-          <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend/issues"
-            >问题反馈</a
-          >
+          <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend#readme">开发说明</a>
+          <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend/issues">问题反馈</a>
         </div>
       </div>
     </footer>

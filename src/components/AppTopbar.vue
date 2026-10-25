@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import BrandLockup from './BrandLockup.vue'
+import RecentWorksButton from './RecentWorksButton.vue'
 import { isDemoMode } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
@@ -73,6 +74,7 @@ watch(
 
       <div class="topbar__actions">
         <span v-if="isDemoMode" class="demo-pill" title="当前使用内置演示数据">演示</span>
+        <RecentWorksButton v-if="auth.user" />
         <RouterLink v-if="auth.user" class="credit-pill" to="/wallet">
           <Coins :size="15" :stroke-width="1.8" aria-hidden="true" />
           <strong>{{ auth.user.creditBalance }}</strong>
@@ -143,23 +145,20 @@ watch(
   position: sticky;
   z-index: 50;
   top: 0;
-  padding: 10px 20px 0;
-  background: color-mix(in srgb, var(--bg) 84%, transparent);
-  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(20px);
 }
 
 .topbar {
   display: grid;
-  width: min(1540px, 100%);
-  min-height: 58px;
+  width: min(1280px, 100%);
+  min-height: 64px;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   margin: 0 auto;
-  padding: 0 12px 0 16px;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
+  padding: 0 20px;
+  background: transparent;
 }
 
 .topbar__brand {
@@ -196,6 +195,10 @@ watch(
   color: var(--ink);
 }
 
+.topbar__nav a.is-active {
+  box-shadow: inset 0 -2px 0 var(--action);
+}
+
 .topbar__nav a:active {
   transform: scale(0.97);
 }
@@ -222,12 +225,12 @@ watch(
 
 .demo-pill {
   padding: 5px 8px;
-  border: 1px solid color-mix(in srgb, var(--candy-blue) 52%, var(--line));
+  border: 1px solid var(--line);
   border-radius: var(--radius-pill);
-  background: var(--candy-blue-soft);
-  color: color-mix(in srgb, var(--candy-blue) 64%, var(--ink));
+  background: var(--surface-muted);
+  color: var(--muted);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .credit-pill strong {
@@ -262,13 +265,13 @@ watch(
 
 @media (max-width: 920px) {
   .topbar-stage {
-    padding: 8px 10px 0;
+    padding: 0;
   }
 
   .topbar {
     min-height: 54px;
     grid-template-columns: minmax(0, 1fr) auto;
-    padding: 0 8px 0 12px;
+    padding: 0 12px;
   }
 
   .topbar__nav {
@@ -285,12 +288,12 @@ watch(
 
   .mobile-nav {
     display: grid;
-    width: min(1540px, 100%);
+    width: min(1280px, calc(100% - 20px));
     gap: 3px;
-    margin: 6px auto 0;
+    margin: 8px auto;
     padding: 6px;
     border: 1px solid var(--line);
-    border-radius: 22px;
+    border-radius: 18px;
     background: var(--surface);
     box-shadow: var(--shadow-card);
   }
@@ -315,6 +318,10 @@ watch(
 }
 
 @media (max-width: 560px) {
+  .demo-pill {
+    display: none;
+  }
+
   .topbar :deep(.brand-copy small) {
     display: none;
   }

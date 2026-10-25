@@ -8,7 +8,7 @@ import { ArrowLeft, ScanSearch } from 'lucide-vue-next'
       <ScanSearch :size="34" :stroke-width="1.35" aria-hidden="true" />
       <span class="page-kicker">404 · 画面未找到</span>
       <h1>这一格没有画面</h1>
-      <p>地址可能已移动，或者这张接触印样从未存在。</p>
+      <p>地址可能已移动，或者这张画面从未存在。</p>
       <RouterLink class="button button--primary" to="/studio">
         <ArrowLeft :size="16" aria-hidden="true" />
         回到工作台
@@ -33,7 +33,7 @@ import { ArrowLeft, ScanSearch } from 'lucide-vue-next'
   padding: clamp(28px, 6vw, 56px);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--candy-yellow-soft) 42%, var(--surface));
+  background: var(--surface);
   color: var(--muted);
   text-align: center;
 }
@@ -41,7 +41,7 @@ import { ArrowLeft, ScanSearch } from 'lucide-vue-next'
 .not-found-panel h1 {
   margin: 14px 0 8px;
   color: var(--ink);
-  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(38px, 7vw, 64px);
   font-weight: 580;
 }

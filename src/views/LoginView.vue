@@ -96,8 +96,8 @@ onMounted(() => {
 <template>
   <AuthLayout
     kicker="欢迎回来"
-    title="回到你的光桌"
-    description="登录后继续创作、查看最近的接触印样，或兑换新的积分。"
+    title="回到你的创作空间"
+    description="登录后继续创作、查看最近作品，或兑换新的积分。"
   >
     <form class="form-stack" novalidate @submit="submit">
       <label class="field">
