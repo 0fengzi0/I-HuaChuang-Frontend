@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101615" />
+    <meta
+      name="description"
+      content="I画创是一套面向多用户的 AI 图片创作工作台，支持文生图、图生图、常用与原始比例、1K/2K 分辨率、积分结算和历史管理。"
+    />
+    <meta property="og:title" content="I画创 · AI 图片创作工作台" />
+    <meta
+      property="og:description"
+      content="从一句描述到可继续工作的图片。真实可运行的 Vue + Go 图像创作平台。"
+    />
+    <meta property="og:image" content="screenshots/studio-desktop.png" />
+    <title>I画创 · AI 图片创作工作台</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --paper: #eff2ed;
+        --paper-deep: #e3e8e2;
+        --ink: #111817;
+        --muted: #5f6b66;
+        --line: #c7d0c9;
+        --night: #101615;
+        --night-soft: #1a2421;
+        --action: #196b86;
+        --signal: #d75b30;
+        --success: #3d7358;
+        --content: min(1180px, calc(100vw - 48px));
+        --display: "Bricolage Grotesque", "Noto Sans SC", sans-serif;
+        --body: "Noto Sans SC", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--body);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      img {
+        display: block;
+        max-width: 100%;
+      }
+
+      .skip-link {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 20;
+        padding: 10px 14px;
+        background: var(--paper);
+        color: var(--ink);
+        transform: translateY(-160%);
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .hero {
+        position: relative;
+        min-height: 92svh;
+        overflow: hidden;
+        background-color: var(--night);
+        background-image: url("screenshots/studio-desktop.png");
+        background-position: center 24%;
+        background-size: cover;
+        color: #f6f8f4;
+      }
+
+      .hero::before {
+        position: absolute;
+        inset: 0;
+        background: rgba(8, 12, 11, 0.7);
+        content: "";
+      }
+
+      .hero-inner {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        width: var(--content);
+        min-height: 92svh;
+        margin: 0 auto;
+        grid-template-rows: auto 1fr auto;
+        padding: 24px 0 38px;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        font-family: var(--display);
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .brand-mark {
+        position: relative;
+        width: 32px;
+        height: 32px;
+        border: 1px solid rgba(255, 255, 255, 0.48);
+        border-radius: 7px;
+      }
+
+      .brand-mark::before,
+      .brand-mark::after {
+        position: absolute;
+        width: 9px;
+        height: 9px;
+        border-color: #ff7a4c;
+        border-style: solid;
+        content: "";
+      }
+
+      .brand-mark::before {
+        top: 5px;
+        left: 5px;
+        border-width: 1px 0 0 1px;
+      }
+
+      .brand-mark::after {
+        right: 5px;
+        bottom: 5px;
+        border-width: 0 1px 1px 0;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .nav-links a {
+        padding: 9px 12px;
+        border-radius: 6px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+      }
+
+      .nav-links a:hover,
+      .nav-links a:focus-visible {
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+      }
+
+      .hero-copy {
+        align-self: end;
+        width: min(780px, 100%);
+        padding: 80px 0 54px;
+      }
+
+      .hero-kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 18px;
+        color: #f7a27e;
+        font-family: var(--display);
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .hero-kicker::before {
+        width: 28px;
+        height: 1px;
+        background: currentColor;
+        content: "";
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 8ch;
+        margin-bottom: 24px;
+        font-family: var(--display);
+        font-size: clamp(88px, 15vw, 188px);
+        font-weight: 600;
+        letter-spacing: -0.06em;
+        line-height: 0.82;
+      }
+
+      .hero-lede {
+        max-width: 650px;
+        margin-bottom: 30px;
+        color: rgba(255, 255, 255, 0.76);
+        font-size: clamp(17px, 2vw, 21px);
+        line-height: 1.75;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 46px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 18px;
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        border-radius: 7px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .button--primary {
+        border-color: #f2f5ee;
+        background: #f2f5ee;
+        color: var(--ink);
+      }
+
+      .button--secondary {
+        color: #f2f5ee;
+      }
+
+      .button:hover,
+      .button:focus-visible {
+        border-color: #ff7a4c;
+      }
+
+      .hero-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding-top: 18px;
+        border-top: 1px solid rgba(255, 255, 255, 0.24);
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 12px;
+      }
+
+      .hero-meta span:first-child {
+        color: rgba(255, 255, 255, 0.86);
+      }
+
+      .section {
+        width: var(--content);
+        margin: 0 auto;
+        padding: 112px 0;
+      }
+
+      .section-heading {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr);
+        align-items: end;
+        gap: 56px;
+        margin-bottom: 48px;
+      }
+
+      .section-heading h2 {
+        max-width: 13ch;
+        margin-bottom: 0;
+        font-family: var(--display);
+        font-size: clamp(42px, 6vw, 72px);
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        line-height: 1;
+      }
+
+      .section-heading p {
+        max-width: 58ch;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.8;
+      }
+
+      .studio-frame {
+        position: relative;
+        padding: 12px;
+        border: 1px solid var(--ink);
+        border-radius: 8px;
+        background: #f9faf7;
+      }
+
+      .studio-frame img {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+      }
+
+      .contact-strip {
+        display: grid;
+        grid-template-columns: 1.35fr 0.85fr 0.85fr;
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      .contact-strip figure {
+        position: relative;
+        min-height: 260px;
+        margin: 0;
+        overflow: hidden;
+        border-radius: 6px;
+        background: var(--night-soft);
+      }
+
+      .contact-strip img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top left;
+      }
+
+      .contact-strip figcaption {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        padding: 6px 9px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        background: rgba(10, 15, 14, 0.84);
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 11px;
+      }
+
+      .dark-band {
+        background: var(--night);
+        color: #edf2ea;
+      }
+
+      .dark-band .section {
+        display: grid;
+        grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+        gap: 80px;
+        align-items: start;
+      }
+
+      .dark-band h2 {
+        max-width: 9ch;
+        margin-bottom: 24px;
+        font-family: var(--display);
+        font-size: clamp(44px, 6vw, 78px);
+        font-weight: 500;
+        letter-spacing: -0.04em;
+        line-height: 0.98;
+      }
+
+      .dark-band .intro {
+        max-width: 44ch;
+        color: rgba(237, 242, 234, 0.62);
+        font-size: 16px;
+        line-height: 1.8;
+      }
+
+      .flow-list {
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .flow-item {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr);
+        gap: 32px;
+        padding: 28px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .flow-item strong {
+        color: #f18a61;
+        font-family: var(--display);
+        font-size: 15px;
+      }
+
+      .flow-item h3 {
+        margin-bottom: 8px;
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      .flow-item p {
+        max-width: 60ch;
+        margin-bottom: 0;
+        color: rgba(237, 242, 234, 0.58);
+        line-height: 1.75;
+      }
+
+      .feature-ledger {
+        border-top: 1px solid var(--line);
+      }
+
+      .feature-row {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr) 180px;
+        gap: 28px;
+        align-items: start;
+        padding: 25px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .feature-row h3 {
+        margin-bottom: 0;
+        font-family: var(--display);
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      .feature-row p {
+        max-width: 65ch;
+        margin-bottom: 0;
+        color: var(--muted);
+        line-height: 1.75;
+      }
+
+      .feature-row span {
+        justify-self: end;
+        color: var(--success);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .building {
+        display: grid;
+        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+        gap: 72px;
+        padding: 70px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .building h2 {
+        max-width: 10ch;
+        font-family: var(--display);
+        font-size: clamp(36px, 5vw, 62px);
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        line-height: 1.02;
+      }
+
+      .roadmap {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .roadmap li {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        gap: 20px;
+        padding: 18px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .roadmap b {
+        color: var(--action);
+        font-size: 12px;
+      }
+
+      .roadmap span {
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      footer {
+        padding: 38px 0 46px;
+        border-top: 1px solid var(--line);
+      }
+
+      .footer-inner {
+        display: flex;
+        width: var(--content);
+        margin: 0 auto;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+      }
+
+      .footer-links a:hover,
+      .footer-links a:focus-visible {
+        color: var(--action);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--signal);
+        outline-offset: 3px;
+      }
+
+      @media (max-width: 900px) {
+        :root {
+          --content: min(100% - 32px, 720px);
+        }
+
+        .hero {
+          min-height: 88svh;
+          background-position: center top;
+        }
+
+        .hero-inner {
+          min-height: 88svh;
+          padding-bottom: 24px;
+        }
+
+        .nav-links a:not(:last-child) {
+          display: none;
+        }
+
+        .hero-copy {
+          padding: 64px 0 38px;
+        }
+
+        h1 {
+          font-size: clamp(78px, 24vw, 136px);
+        }
+
+        .hero-meta {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .section {
+          padding: 80px 0;
+        }
+
+        .section-heading,
+        .dark-band .section,
+        .building {
+          grid-template-columns: 1fr;
+          gap: 30px;
+        }
+
+        .contact-strip {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .contact-strip figure:first-child {
+          grid-column: 1 / -1;
+        }
+
+        .feature-row {
+          grid-template-columns: 1fr;
+          gap: 9px;
+        }
+
+        .feature-row span {
+          justify-self: start;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .hero-lede {
+          font-size: 16px;
+        }
+
+        .hero-actions {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .button {
+          width: 100%;
+        }
+
+        .contact-strip {
+          grid-template-columns: 1fr;
+        }
+
+        .contact-strip figure:first-child {
+          grid-column: auto;
+        }
+
+        .contact-strip figure {
+          min-height: 230px;
+        }
+
+        .flow-item {
+          grid-template-columns: 1fr;
+          gap: 9px;
+        }
+
+        .footer-inner {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        .hero-copy {
+          animation: reveal 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        }
+
+        @keyframes reveal {
+          from {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="hero">
+      <div class="hero-inner">
+        <nav class="nav" aria-label="主导航">
+          <a class="brand" href="./" aria-label="I画创首页">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>I画创</span>
+          </a>
+          <div class="nav-links">
+            <a href="#workflow">生成流程</a>
+            <a href="#capabilities">功能</a>
+            <a href="#roadmap">开发进度</a>
+            <a href="app/">前端演示</a>
+            <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend">GitHub</a>
+          </div>
+        </nav>
+
+        <div class="hero-copy">
+          <span class="hero-kicker">多用户 AI 图片创作工作台</span>
+          <h1>I画创</h1>
+          <p class="hero-lede">
+            从一句描述到可以继续工作的图片。文生图、图生图、原始比例、1K/2K
+            输出、积分结算和历史管理，收在同一张光桌上。
+          </p>
+          <div class="hero-actions">
+            <a class="button button--primary" href="app/">打开前端演示</a>
+            <a
+              class="button button--secondary"
+              href="https://github.com/0fengzi0/I-HuaChuang-Frontend"
+              >查看源代码</a
+            >
+          </div>
+        </div>
+
+        <div class="hero-meta">
+          <span>Vue 3 · Go · GPT Image API</span>
+          <span>前端演示使用内置数据，真实生成需要连接 Go 后端</span>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="section" aria-labelledby="studio-title">
+        <div class="section-heading">
+          <h2 id="studio-title">把创作留在同一个工作台</h2>
+          <p>
+            画面比例与分辨率分开选择，参数、预计积分、生成进度和真实结果始终在眼前。桌面端保持高密度工作区，移动端切换为完整参数抽屉。
+          </p>
+        </div>
+        <div class="studio-frame">
+          <img
+            src="screenshots/studio-desktop.png"
+            alt="I画创桌面工作台，包含画幅比例、1K/2K 分辨率、提示词和生成画布"
+            loading="lazy"
+          />
+        </div>
+        <div class="contact-strip" aria-label="产品界面截图">
+          <figure>
+            <img
+              src="screenshots/generation-result-desktop.png"
+              alt="生成结果与历史作品界面"
+              loading="lazy"
+            />
+            <figcaption>生成结果</figcaption>
+          </figure>
+          <figure>
+            <img
+              src="screenshots/generation-detail-desktop.png"
+              alt="作品详情页，显示参数、状态和下载操作"
+              loading="lazy"
+            />
+            <figcaption>详情与下载</figcaption>
+          </figure>
+          <figure>
+            <img
+              src="screenshots/admin-settings-desktop.png"
+              alt="管理后台中转站与系统设置"
+              loading="lazy"
+            />
+            <figcaption>运营后台</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="dark-band" id="workflow" aria-labelledby="workflow-title">
+        <div class="section">
+          <div>
+            <h2 id="workflow-title">一条完整的生成链路</h2>
+            <p class="intro">
+              页面只负责表达和操作，服务端负责真正的校验、排队、调用、落盘与结算。
+            </p>
+          </div>
+          <div class="flow-list">
+            <div class="flow-item">
+              <strong>描述画面</strong>
+              <div>
+                <h3>文字或参考图进入任务</h3>
+                <p>提示词、模式、比例和分辨率先经过服务端校验，不在浏览器里假装成功。</p>
+              </div>
+            </div>
+            <div class="flow-item">
+              <strong>冻结积分</strong>
+              <div>
+                <h3>按输出逐张结算</h3>
+                <p>提交时冻结额度，成功输出才正式扣费；失败与超时释放对应积分。</p>
+              </div>
+            </div>
+            <div class="flow-item">
+              <strong>兼容上游</strong>
+              <div>
+                <h3>适配真实接口差异</h3>
+                <p>兼容 Base64、临时 URL、原始图片和流式响应，并将结果校正到所选尺寸。</p>
+              </div>
+            </div>
+            <div class="flow-item">
+              <strong>保存结果</strong>
+              <div>
+                <h3>受控媒体与可追溯历史</h3>
+                <p>图片通过鉴权接口访问，保留期、收藏、复用参数与下载记录统一管理。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="capabilities" aria-labelledby="capabilities-title">
+        <div class="section-heading">
+          <h2 id="capabilities-title">为持续创作准备的基础</h2>
+          <p>
+            I画创不是一次性生成页。账户、额度、运营配置和媒体生命周期被放在同一套产品结构里。
+          </p>
+        </div>
+        <div class="feature-ledger">
+          <div class="feature-row">
+            <h3>比例与分辨率</h3>
+            <p>
+              支持方形、横幅、竖幅、宽屏、竖屏、经典和超宽比例，也可读取首张参考图的原始比例。输出只有
+              1K 与 2K 两档，避免上游无法兑现的规格。
+            </p>
+            <span>已实现</span>
+          </div>
+          <div class="feature-row">
+            <h3>文生图与图生图</h3>
+            <p>参考图支持 PNG、JPEG、WebP，服务端完成方向纠正、格式归一化和尺寸校正。</p>
+            <span>已实现</span>
+          </div>
+          <div class="feature-row">
+            <h3>账户与积分</h3>
+            <p>登录、刷新会话、卡密兑换、额度流水、生成冻结和逐张扣费形成一条可核对链路。</p>
+            <span>已实现</span>
+          </div>
+          <div class="feature-row">
+            <h3>运营后台</h3>
+            <p>中转站密钥加密保存、用户与卡密管理、价格、保留期、审计日志和生成统计。</p>
+            <span>已实现</span>
+          </div>
+          <div class="feature-row">
+            <h3>部署路径</h3>
+            <p>本地 SQLite 开发，生产 MySQL、Nginx、systemd 与 HTTPS 配置入口已经提供。</p>
+            <span>持续验证</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="roadmap" aria-labelledby="roadmap-title">
+        <div class="building">
+          <h2 id="roadmap-title">下一步，把真实环境跑透</h2>
+          <ul class="roadmap">
+            <li>
+              <b>已上线</b>
+              <span>GitHub Pages 提供产品页与带内置数据的可交互前端演示。</span>
+            </li>
+            <li>
+              <b>待验证</b>
+              <span>在 MySQL 8.0 上执行迁移、并发任务领取和积分事务测试。</span>
+            </li>
+            <li>
+              <b>待验证</b>
+              <span>在 Linux + Nginx + HTTPS 环境完成媒体目录、备份恢复和真实生成冒烟。</span>
+            </li>
+            <li>
+              <b>待验证</b>
+              <span>针对实际中转站补充限流、部分失败和多参考图兼容差异。</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-inner">
+        <span>I画创 · AI 图片创作工作台</span>
+        <div class="footer-links">
+          <a href="app/">前端演示</a>
+          <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend">前端源代码</a>
+          <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend#readme"
+            >开发说明</a
+          >
+          <a href="https://github.com/0fengzi0/I-HuaChuang-Frontend/issues"
+            >问题反馈</a
+          >
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
