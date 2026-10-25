@@ -41,7 +41,7 @@ const options = [
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-thumb);
   background: var(--surface-muted);
 }
 
@@ -52,7 +52,7 @@ button {
   justify-content: center;
   gap: 7px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;

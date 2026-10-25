@@ -316,7 +316,7 @@ function formatDate(value: string | undefined) {
 .profile-card,
 .settings-card {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -324,6 +324,7 @@ function formatDate(value: string | undefined) {
   display: grid;
   gap: 24px;
   padding: 24px;
+  background: color-mix(in srgb, var(--candy-mint-soft) 56%, var(--surface));
 }
 
 .profile-avatar {
@@ -333,9 +334,9 @@ function formatDate(value: string | undefined) {
   place-items: center;
   border: 1px solid var(--line-strong);
   border-radius: 50%;
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--candy-pink-soft) 74%, var(--surface));
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: 30px;
   font-weight: 600;
 }
@@ -343,7 +344,7 @@ function formatDate(value: string | undefined) {
 .profile-copy h2 {
   margin: 7px 0 2px;
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: 30px;
   font-weight: 560;
 }
@@ -359,7 +360,7 @@ function formatDate(value: string | undefined) {
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-thumb);
   background: var(--line);
 }
 

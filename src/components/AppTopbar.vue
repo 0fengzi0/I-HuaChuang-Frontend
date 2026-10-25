@@ -144,7 +144,7 @@ watch(
   z-index: 50;
   top: 0;
   padding: 10px 20px 0;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
   backdrop-filter: blur(18px);
 }
 
@@ -157,9 +157,9 @@ watch(
   margin: 0 auto;
   padding: 0 12px 0 16px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 22px;
   background: var(--surface);
-  box-shadow: 0 1px 2px var(--shadow-color);
+  box-shadow: var(--shadow-card);
 }
 
 .topbar__brand {
@@ -179,7 +179,7 @@ watch(
   align-items: center;
   gap: 7px;
   padding: 0 13px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--muted);
   font-size: 13px;
   font-weight: 500;
@@ -222,12 +222,12 @@ watch(
 
 .demo-pill {
   padding: 5px 8px;
-  border: 1px solid color-mix(in srgb, var(--warning) 36%, var(--line));
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
-  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--candy-blue) 52%, var(--line));
+  border-radius: var(--radius-pill);
+  background: var(--candy-blue-soft);
+  color: color-mix(in srgb, var(--candy-blue) 64%, var(--ink));
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .credit-pill strong {
@@ -290,9 +290,9 @@ watch(
     margin: 6px auto 0;
     padding: 6px;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: 22px;
     background: var(--surface);
-    box-shadow: 0 14px 34px var(--shadow-color);
+    box-shadow: var(--shadow-card);
   }
 
   .mobile-nav a {
@@ -302,7 +302,7 @@ watch(
     align-items: center;
     gap: 10px;
     padding: 0 10px;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     color: var(--muted);
     font-size: 13px;
     text-decoration: none;

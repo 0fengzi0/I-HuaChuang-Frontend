@@ -43,7 +43,7 @@ export const useThemeStore = defineStore('theme', () => {
     document.documentElement.dataset.theme = resolved.value
     document.documentElement.style.colorScheme = resolved.value
     const meta = document.querySelector('meta[name="theme-color"]')
-    meta?.setAttribute('content', resolved.value === 'dark' ? '#0f1211' : '#f1f3ee')
+    meta?.setAttribute('content', resolved.value === 'dark' ? '#2b2225' : '#fff2dd')
   }
 
   function handleSystemTheme(event: MediaQueryListEvent) {

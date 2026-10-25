@@ -972,7 +972,7 @@ function auditLabel(action: string) {
   gap: 3px;
   padding: 5px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 20px;
   background: var(--surface);
 }
 
@@ -983,7 +983,7 @@ function auditLabel(action: string) {
   gap: 8px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1013,7 +1013,7 @@ function auditLabel(action: string) {
 .stat-card,
 .admin-panel {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -1022,6 +1022,22 @@ function auditLabel(action: string) {
   min-height: 144px;
   gap: 7px;
   padding: 16px;
+}
+
+.stat-card:nth-child(1) {
+  background: color-mix(in srgb, var(--candy-pink-soft) 66%, var(--surface));
+}
+
+.stat-card:nth-child(2) {
+  background: color-mix(in srgb, var(--candy-blue-soft) 68%, var(--surface));
+}
+
+.stat-card:nth-child(3) {
+  background: color-mix(in srgb, var(--candy-yellow-soft) 62%, var(--surface));
+}
+
+.stat-card:nth-child(4) {
+  background: color-mix(in srgb, var(--candy-mint-soft) 66%, var(--surface));
 }
 
 .stat-card > div {
@@ -1071,7 +1087,7 @@ function auditLabel(action: string) {
   margin: 18px 0 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 12px;
   background: var(--line);
 }
 
@@ -1109,7 +1125,7 @@ function auditLabel(action: string) {
 .next-phase h2 {
   margin: 10px 0 8px;
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: 25px;
   font-weight: 560;
 }
@@ -1128,7 +1144,7 @@ function auditLabel(action: string) {
   gap: 5px;
   padding: 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-muted);
 }
 
@@ -1366,7 +1382,7 @@ function auditLabel(action: string) {
   overflow: auto;
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 12px;
   background: var(--surface-muted);
   color: var(--ink);
   font-family: 'IBM Plex Mono', monospace;
@@ -1452,7 +1468,7 @@ function auditLabel(action: string) {
   gap: 7px;
   padding: 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-muted);
 }
 
@@ -1525,7 +1541,7 @@ function auditLabel(action: string) {
   width: min(440px, 100%);
   padding: 18px;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: 0 28px 80px rgb(0 0 0 / 32%);
 }
@@ -1548,7 +1564,7 @@ function auditLabel(action: string) {
   padding: 12px;
   overflow-wrap: anywhere;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-muted);
   color: var(--ink);
   font-family: 'IBM Plex Mono', monospace;
@@ -1586,7 +1602,7 @@ function auditLabel(action: string) {
   height: 32px;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-muted);
   color: var(--action);
 }

@@ -7,48 +7,79 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --bg: #e9ece7;
-  --surface: #ffffff;
-  --surface-muted: #f6f7f4;
-  --surface-hover: #eef1ec;
-  --ink: #171a18;
-  --muted: #6f766f;
-  --muted-soft: #a2a8a2;
-  --line: #d7dbd5;
-  --line-strong: #b8c0ba;
-  --action: #2447d8;
-  --action-hover: #1938b5;
-  --action-soft: rgb(36 71 216 / 8%);
-  --warning: #c9652d;
-  --success: #237c58;
-  --focus-ring: rgb(36 71 216 / 20%);
-  --shadow-color: rgb(23 26 24 / 10%);
-  --canvas-bg: #f3f5f1;
-  --canvas-grid: rgb(23 26 24 / 5%);
+  --bg: #fff2dd;
+  --surface: #fffdf8;
+  --surface-muted: #fff7e8;
+  --surface-hover: #ffebd2;
+  --ink: #493633;
+  --muted: #856e67;
+  --muted-soft: #b6a199;
+  --line: #ead3c4;
+  --line-strong: #d8b6a6;
+  --action: #c93d67;
+  --action-hover: #ad2f56;
+  --action-soft: #ffe2ea;
+  --warning: #d77546;
+  --success: #4f9e80;
+  --focus-ring: rgb(201 61 103 / 20%);
+  --shadow-color: rgb(92 54 47 / 12%);
+  --shadow-card:
+    0 3px 0 color-mix(in srgb, var(--line) 72%, var(--surface)),
+    0 14px 32px color-mix(in srgb, var(--shadow-color) 78%, transparent);
+  --shadow-soft: 0 2px 0 color-mix(in srgb, var(--line) 60%, var(--surface));
+  --canvas-bg: #fff9ef;
+  --canvas-grid: rgb(108 74 67 / 5%);
+  --candy-blue: #75bde4;
+  --candy-blue-soft: #e2f5ff;
+  --candy-pink: #f5a8ba;
+  --candy-pink-soft: #ffe1e8;
+  --candy-yellow: #f1c95d;
+  --candy-yellow-soft: #fff1bd;
+  --candy-mint: #78c9ab;
+  --candy-mint-soft: #ddf7ec;
+  --candy-lilac: #b8a0df;
+  --radius-card: 24px;
+  --radius-thumb: 18px;
+  --radius-control: 14px;
+  --radius-control-sm: 10px;
+  --radius-pill: 999px;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0f1211;
-  --surface: #171a18;
-  --surface-muted: #1d2220;
-  --surface-hover: #252c28;
-  --ink: #e8e5dc;
-  --muted: #9ba49e;
-  --muted-soft: #616b65;
-  --line: #303632;
-  --line-strong: #4a544e;
-  --action: #7c91ff;
-  --action-hover: #99a9ff;
-  --action-soft: rgb(124 145 255 / 12%);
-  --warning: #ff8b63;
-  --success: #59c8c6;
-  --focus-ring: rgb(124 145 255 / 24%);
-  --shadow-color: rgb(0 0 0 / 24%);
-  --canvas-bg: #121614;
-  --canvas-grid: rgb(232 229 220 / 5%);
+  --bg: #2b2225;
+  --surface: #392e32;
+  --surface-muted: #45373b;
+  --surface-hover: #513f45;
+  --ink: #fff2e7;
+  --muted: #d0b8b1;
+  --muted-soft: #9a827f;
+  --line: #5e494f;
+  --line-strong: #7e626a;
+  --action: #ff8ba8;
+  --action-hover: #ffa9be;
+  --action-soft: rgb(255 139 168 / 14%);
+  --warning: #ffad74;
+  --success: #79d2b3;
+  --focus-ring: rgb(255 139 168 / 24%);
+  --shadow-color: rgb(0 0 0 / 26%);
+  --shadow-card:
+    0 3px 0 #1f1719,
+    0 16px 34px color-mix(in srgb, var(--shadow-color) 90%, transparent);
+  --shadow-soft: 0 2px 0 #21191b;
+  --canvas-bg: #30272a;
+  --canvas-grid: rgb(255 242 231 / 5%);
+  --candy-blue: #8bc9e9;
+  --candy-blue-soft: #253d4a;
+  --candy-pink: #b96e84;
+  --candy-pink-soft: #4b2e39;
+  --candy-yellow: #f4ce6b;
+  --candy-yellow-soft: #4b4028;
+  --candy-mint: #82d5b6;
+  --candy-mint-soft: #29453b;
+  --candy-lilac: #c4afe7;
 }
 
 * {
@@ -67,7 +98,9 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: clip;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--canvas-grid) 0.8px, transparent 0.8px);
+  background-size: 16px 16px;
   color: var(--ink);
   font-size: 14px;
 }
@@ -192,18 +225,26 @@ img {
 
 .page-kicker,
 .card-index {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--candy-yellow-soft) 82%, var(--surface));
   color: var(--action);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 9px;
-  font-weight: 500;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .page-heading h1 {
   margin: 9px 0 7px;
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: clamp(30px, 4vw, 48px);
-  font-weight: 580;
+  font-weight: 600;
+  letter-spacing: 0;
   line-height: 1.05;
 }
 
@@ -223,7 +264,7 @@ img {
   gap: 7px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
@@ -254,7 +295,8 @@ img {
 .button--primary {
   border-color: var(--action);
   background: var(--action);
-  color: #fff;
+  color: #fffdf8;
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--action-hover) 78%, #6e1d35);
 }
 
 .button--primary:hover {
@@ -263,7 +305,7 @@ img {
 }
 
 :root[data-theme='dark'] .button--primary {
-  color: #101311;
+  color: #302326;
 }
 
 .button--secondary {
@@ -288,7 +330,7 @@ img {
   flex: 0 0 36px;
   place-items: center;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -381,7 +423,7 @@ img {
   min-height: 46px;
   padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   outline: 0;
   background: var(--surface-muted);
   color: var(--ink);
@@ -434,7 +476,7 @@ img {
   height: 34px;
   place-items: center;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -456,7 +498,7 @@ img {
 .inline-alert {
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: 10px;
   line-height: 1.6;
 }
@@ -505,6 +547,34 @@ img {
   color: var(--action);
   font-weight: 500;
   text-decoration: none;
+}
+
+.app-root :is(
+  .tool-card,
+  .canvas-card,
+  .contact-sheet,
+  .history-panel,
+  .history-card,
+  .balance-card,
+  .redeem-card,
+  .ledger-card,
+  .profile-card,
+  .settings-card,
+  .detail-panel,
+  .detail-actions,
+  .detail-canvas,
+  .admin-tabs,
+  .admin-panel,
+  .stat-card,
+  .not-found-panel,
+  .legal-placeholder,
+  .auth-back
+) {
+  box-shadow: var(--shadow-card) !important;
+}
+
+.app-root :is(.recent-card, .history-card, .theme-segmented) {
+  box-shadow: var(--shadow-soft);
 }
 
 .visually-hidden {

@@ -53,7 +53,7 @@ defineProps<{
   display: grid;
   min-height: 100svh;
   grid-template-columns: minmax(0, 1.04fr) minmax(440px, 0.96fr);
-  background: var(--bg);
+  background: transparent;
 }
 
 .auth-back {
@@ -67,7 +67,7 @@ defineProps<{
   gap: 7px;
   padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   color: var(--muted);
   font-size: 12px;
@@ -84,14 +84,14 @@ defineProps<{
   min-height: calc(100svh - 24px);
   margin: 12px 0 12px 12px;
   overflow: hidden;
-  border-radius: 14px;
-  background: #d8ddd6;
+  border-radius: var(--radius-card);
+  background: var(--candy-pink, #ffd2de);
 }
 
 .auth-visual::after {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, rgb(12 17 15 / 28%), transparent 30%, rgb(12 17 15 / 58%));
+  background: linear-gradient(to bottom, rgb(74 49 52 / 26%), transparent 32%, rgb(74 49 52 / 62%));
   content: '';
   pointer-events: none;
 }
@@ -142,7 +142,7 @@ defineProps<{
 
 .auth-visual__caption p {
   margin: 8px 0 0;
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: clamp(24px, 2.5vw, 38px);
   font-weight: 520;
   line-height: 1.25;
@@ -175,9 +175,10 @@ defineProps<{
 .auth-panel__heading h1 {
   margin: 10px 0 10px;
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: clamp(34px, 4vw, 48px);
   font-weight: 600;
+  letter-spacing: 0;
   line-height: 1.04;
 }
 

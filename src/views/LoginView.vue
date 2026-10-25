@@ -212,8 +212,8 @@ onMounted(() => {
   height: 48px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f1f3ee;
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
   cursor: pointer;
 }
 
@@ -229,7 +229,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: #2447d8;
+  color: var(--action);
   font-size: 12px;
 }
 

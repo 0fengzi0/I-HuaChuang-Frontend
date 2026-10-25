@@ -40,8 +40,9 @@ withDefaults(
   flex: 0 0 34px;
   place-items: center;
   border: 1px solid var(--line-strong);
-  border-radius: 9px;
+  border-radius: 12px;
   background: var(--surface);
+  box-shadow: 0 2px 0 var(--line);
 }
 
 .brand-mark__corner {
@@ -68,7 +69,7 @@ withDefaults(
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--warning);
+  background: var(--action);
 }
 
 .brand-copy {
@@ -80,7 +81,7 @@ withDefaults(
 
 .brand-copy strong {
   overflow: hidden;
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: 20px;
   font-weight: 650;
   line-height: 1;

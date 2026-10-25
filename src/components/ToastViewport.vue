@@ -49,7 +49,7 @@ const { items } = storeToRefs(notifications)
   gap: 10px;
   padding: 12px 12px 12px 14px;
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-thumb);
   background: var(--surface);
   box-shadow: 0 14px 34px var(--shadow-color);
   color: var(--ink);
@@ -76,7 +76,7 @@ button {
   height: 28px;
   place-items: center;
   border: 0;
-  border-radius: 6px;
+  border-radius: 10px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;

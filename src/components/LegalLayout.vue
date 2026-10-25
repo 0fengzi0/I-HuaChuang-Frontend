@@ -87,10 +87,11 @@ defineProps<{
 .legal-aside h1 {
   margin: 12px 0 8px;
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: clamp(42px, 6vw, 72px);
   font-weight: 600;
-  line-height: 0.98;
+  letter-spacing: 0;
+  line-height: 1.02;
 }
 
 .legal-aside > p {
@@ -103,15 +104,19 @@ defineProps<{
   margin-top: 32px;
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--line));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--warning) 6%, var(--surface));
+  border-radius: var(--radius-thumb);
+  background: color-mix(in srgb, var(--candy-yellow-soft) 78%, var(--surface));
   color: var(--muted);
   font-size: 10px;
   line-height: 1.7;
 }
 
 .legal-content {
-  padding-bottom: 40px;
+  padding: clamp(24px, 4vw, 40px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .legal-content :deep(h2) {

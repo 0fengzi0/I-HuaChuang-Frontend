@@ -206,8 +206,8 @@ function formatDate(value: string) {
 .history-panel {
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--surface) 91%, var(--candy-blue-soft));
 }
 
 .history-toolbar {
@@ -233,7 +233,7 @@ function formatDate(value: string) {
   gap: 6px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -280,8 +280,8 @@ function formatDate(value: string) {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-muted);
+  border-radius: var(--radius-thumb);
+  background: var(--surface);
   color: var(--muted);
   text-decoration: none;
   transition:
@@ -435,7 +435,7 @@ function formatDate(value: string) {
   aspect-ratio: 4 / 3;
   place-items: center;
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-thumb);
   background: var(--surface);
   color: var(--muted-soft);
   font-family: 'IBM Plex Mono', monospace;
@@ -463,7 +463,7 @@ function formatDate(value: string) {
 .archive-empty__copy h2 {
   margin: 10px 0 9px;
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: clamp(28px, 4vw, 42px);
   font-weight: 560;
   line-height: 1.15;

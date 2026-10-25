@@ -374,7 +374,7 @@ function formatDate(value: string | null) {
   max-width: 28ch;
   margin: 8px 0 7px;
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'Noto Sans SC', sans-serif;
+  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
   font-size: clamp(26px, 3.5vw, 44px);
   font-weight: 570;
   line-height: 1.18;
@@ -395,7 +395,7 @@ function formatDate(value: string | null) {
 
 .detail-score strong {
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'IBM Plex Mono', sans-serif;
+  font-family: 'Fredoka', 'IBM Plex Mono', sans-serif;
   font-size: 44px;
   font-weight: 540;
   line-height: 0.9;
@@ -418,12 +418,16 @@ function formatDate(value: string | null) {
 .detail-panel,
 .detail-actions {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
 .detail-canvas {
   overflow: hidden;
+}
+
+.detail-panel {
+  background: color-mix(in srgb, var(--surface) 91%, var(--candy-mint-soft));
 }
 
 .detail-canvas__head {
@@ -456,7 +460,7 @@ function formatDate(value: string | null) {
   height: auto;
   max-height: 620px;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   box-shadow: 0 18px 46px rgb(0 0 0 / 20%);
 }
 
@@ -487,7 +491,7 @@ function formatDate(value: string | null) {
 .detail-state {
   min-height: 560px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -508,7 +512,7 @@ function formatDate(value: string | null) {
   overflow: hidden;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   background: var(--surface);
 }
 
@@ -560,7 +564,7 @@ function formatDate(value: string | null) {
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--line);
 }
 
@@ -599,7 +603,7 @@ function formatDate(value: string | null) {
   min-height: 34px;
   padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   color: var(--muted);
   font-size: 9px;
 }
@@ -645,7 +649,7 @@ function formatDate(value: string | null) {
   width: min(420px, 100%);
   padding: 22px;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: 0 28px 80px rgb(0 0 0 / 32%);
 }

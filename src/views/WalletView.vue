@@ -218,7 +218,7 @@ function ledgerLabel(reason: string) {
 .redeem-card,
 .ledger-card {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -228,6 +228,7 @@ function ledgerLabel(reason: string) {
   flex-direction: column;
   justify-content: space-between;
   padding: 18px;
+  background: color-mix(in srgb, var(--candy-pink-soft) 72%, var(--surface));
 }
 
 .balance-card__top {
@@ -245,7 +246,7 @@ function ledgerLabel(reason: string) {
 
 .balance-value strong {
   color: var(--ink);
-  font-family: 'Bricolage Grotesque', 'IBM Plex Mono', sans-serif;
+  font-family: 'Fredoka', 'IBM Plex Mono', sans-serif;
   font-size: clamp(58px, 7vw, 92px);
   font-weight: 550;
   line-height: 0.9;
@@ -259,7 +260,7 @@ function ledgerLabel(reason: string) {
 .reserved-note {
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--line));
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   background: color-mix(in srgb, var(--warning) 5%, var(--surface-muted));
   color: var(--warning);
   font-size: 9px;
@@ -279,6 +280,7 @@ function ledgerLabel(reason: string) {
 
 .redeem-card {
   padding: 18px;
+  background: color-mix(in srgb, var(--candy-blue-soft) 66%, var(--surface));
 }
 
 .redeem-form {
@@ -347,7 +349,7 @@ function ledgerLabel(reason: string) {
   width: 32px;
   height: 32px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--success) 12%, var(--surface-muted));
   color: var(--success);
 }

@@ -1262,8 +1262,8 @@ onBeforeUnmount(() => {
   gap: 3px;
   padding: 3px;
   border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--surface-muted);
+  border-radius: 18px;
+  background: var(--candy-yellow-soft);
 }
 
 .mode-switch button {
@@ -1273,7 +1273,7 @@ onBeforeUnmount(() => {
   gap: 7px;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1344,7 +1344,7 @@ onBeforeUnmount(() => {
 
 .tool-card {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: 0 7px 22px color-mix(in srgb, var(--shadow-color) 55%, transparent);
 }
@@ -1353,6 +1353,18 @@ onBeforeUnmount(() => {
 .reference-card,
 .parameters-card {
   padding: 14px;
+}
+
+.prompt-card {
+  border-color: color-mix(in srgb, var(--action) 28%, var(--line));
+}
+
+.reference-card {
+  border-color: color-mix(in srgb, var(--candy-blue) 42%, var(--line));
+}
+
+.parameters-card {
+  border-color: color-mix(in srgb, var(--candy-yellow) 46%, var(--line));
 }
 
 .card-heading {
@@ -1397,7 +1409,7 @@ onBeforeUnmount(() => {
   resize: vertical;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   outline: 0;
   background: var(--surface-muted);
   color: var(--ink);
@@ -1426,7 +1438,7 @@ onBeforeUnmount(() => {
   min-height: 28px;
   padding: 0 9px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1449,7 +1461,7 @@ onBeforeUnmount(() => {
   aspect-ratio: 1;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .reference-item img {
@@ -1467,7 +1479,7 @@ onBeforeUnmount(() => {
   height: 22px;
   place-items: center;
   border: 0;
-  border-radius: 6px;
+  border-radius: 10px;
   background: rgb(15 18 17 / 72%);
   color: #fff;
   cursor: pointer;
@@ -1481,7 +1493,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 5px;
   border: 1px dashed var(--line-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-muted);
   color: var(--muted);
   cursor: pointer;
@@ -1527,7 +1539,7 @@ onBeforeUnmount(() => {
   gap: 7px;
   padding: 7px 4px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-muted);
   color: var(--muted);
   cursor: pointer;
@@ -1636,7 +1648,7 @@ onBeforeUnmount(() => {
   appearance: none;
   padding: 0 36px 0 11px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   outline: 0;
   background: var(--surface-muted);
   color: var(--ink);
@@ -1663,7 +1675,7 @@ onBeforeUnmount(() => {
   gap: 9px;
   padding: 10px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 12px;
   background: var(--surface-muted);
 }
 
@@ -1706,7 +1718,7 @@ onBeforeUnmount(() => {
   gap: 1px;
   padding: 6px 4px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1750,7 +1762,7 @@ onBeforeUnmount(() => {
   align-items: center;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-muted);
 }
 
@@ -1783,7 +1795,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 11px 13px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-thumb);
   background: var(--surface-muted);
 }
 
@@ -1837,9 +1849,10 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: 0 10px 26px color-mix(in srgb, var(--shadow-color) 50%, transparent);
+  border-color: color-mix(in srgb, var(--candy-mint) 40%, var(--line));
 }
 
 .canvas-head {
@@ -1911,7 +1924,7 @@ onBeforeUnmount(() => {
   max-height: 500px;
   aspect-ratio: var(--canvas-ratio);
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: var(--radius-thumb);
   box-shadow: 0 18px 44px rgb(0 0 0 / 20%);
   transition:
     opacity 180ms var(--ease-out),
@@ -1923,7 +1936,7 @@ onBeforeUnmount(() => {
   height: auto;
   max-height: 500px;
   aspect-ratio: var(--canvas-ratio);
-  border-radius: 10px;
+  border-radius: var(--radius-thumb);
   object-fit: cover;
   box-shadow: 0 18px 44px rgb(0 0 0 / 20%);
 }
@@ -1955,7 +1968,7 @@ onBeforeUnmount(() => {
 
 .canvas-frame__meta span {
   padding: 4px 7px;
-  border-radius: 5px;
+  border-radius: 8px;
   background: rgb(15 18 17 / 74%);
   color: #e8e5dc;
   font-family: 'IBM Plex Mono', monospace;
@@ -2015,7 +2028,7 @@ onBeforeUnmount(() => {
   height: 28px;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   color: var(--muted);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 8px;
@@ -2052,7 +2065,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control-sm);
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
@@ -2119,7 +2132,7 @@ onBeforeUnmount(() => {
 .contact-sheet {
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -2130,6 +2143,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 0 16px;
   border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--candy-blue-soft) 46%, var(--surface));
 }
 
 .contact-head > div {
@@ -2170,7 +2184,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-muted);
   color: var(--muted);
   cursor: pointer;
@@ -2217,7 +2231,7 @@ onBeforeUnmount(() => {
   height: 48px;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-thumb);
   background: var(--surface-muted);
   color: var(--muted);
 }
@@ -2247,7 +2261,7 @@ onBeforeUnmount(() => {
   height: 42px;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 10px;
   color: var(--muted-soft);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 8px;
@@ -2268,7 +2282,7 @@ onBeforeUnmount(() => {
   padding: 0;
   overflow: auto;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--surface);
   color: var(--ink);
   box-shadow: 0 28px 90px rgb(0 0 0 / 42%);
@@ -2506,7 +2520,7 @@ onBeforeUnmount(() => {
     gap: 6px;
     padding: 0 11px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: var(--surface-muted);
     color: var(--ink);
     font-size: 11px;

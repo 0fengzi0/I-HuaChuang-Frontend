@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#101615" />
+    <meta name="theme-color" content="#4a3338" />
     <meta
       name="description"
       content="I画创是一套面向多用户的 AI 图片创作工作台，支持文生图、图生图、常用与原始比例、1K/2K 分辨率、积分结算和历史管理。"
@@ -19,23 +19,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <style>
       :root {
-        --paper: #eff2ed;
-        --paper-deep: #e3e8e2;
-        --ink: #111817;
-        --muted: #5f6b66;
-        --line: #c7d0c9;
-        --night: #101615;
-        --night-soft: #1a2421;
-        --action: #196b86;
-        --signal: #d75b30;
-        --success: #3d7358;
+        --paper: #fff2dd;
+        --paper-deep: #f8e4ce;
+        --ink: #493633;
+        --muted: #856e67;
+        --line: #ead3c4;
+        --night: #4a3338;
+        --night-soft: #5a3d43;
+        --action: #c93d67;
+        --signal: #d77546;
+        --success: #4f9e80;
+        --candy-blue: #75bde4;
+        --candy-yellow: #f1c95d;
         --content: min(1180px, calc(100vw - 48px));
-        --display: "Bricolage Grotesque", "Noto Sans SC", sans-serif;
+        --display: "Fredoka", "Noto Sans SC", sans-serif;
         --body: "Noto Sans SC", sans-serif;
       }
 
@@ -49,7 +51,9 @@
 
       body {
         margin: 0;
-        background: var(--paper);
+        background-color: var(--paper);
+        background-image: radial-gradient(rgb(112 76 68 / 5%) 0.8px, transparent 0.8px);
+        background-size: 16px 16px;
         color: var(--ink);
         font-family: var(--body);
         -webkit-font-smoothing: antialiased;
@@ -94,7 +98,7 @@
       .hero::before {
         position: absolute;
         inset: 0;
-        background: rgba(8, 12, 11, 0.7);
+        background: rgba(68, 44, 49, 0.72);
         content: "";
       }
 
@@ -131,7 +135,7 @@
         width: 32px;
         height: 32px;
         border: 1px solid rgba(255, 255, 255, 0.48);
-        border-radius: 7px;
+        border-radius: 12px;
       }
 
       .brand-mark::before,
@@ -164,7 +168,7 @@
 
       .nav-links a {
         padding: 9px 12px;
-        border-radius: 6px;
+        border-radius: 14px;
         color: rgba(255, 255, 255, 0.72);
         font-size: 13px;
       }
@@ -186,7 +190,7 @@
         align-items: center;
         gap: 9px;
         margin-bottom: 18px;
-        color: #f7a27e;
+        color: #ffd0a8;
         font-family: var(--display);
         font-size: 14px;
         font-weight: 600;
@@ -212,8 +216,8 @@
         font-family: var(--display);
         font-size: clamp(88px, 15vw, 188px);
         font-weight: 600;
-        letter-spacing: -0.06em;
-        line-height: 0.82;
+        letter-spacing: 0;
+        line-height: 0.9;
       }
 
       .hero-lede {
@@ -237,7 +241,7 @@
         justify-content: center;
         padding: 0 18px;
         border: 1px solid rgba(255, 255, 255, 0.34);
-        border-radius: 7px;
+        border-radius: 16px;
         font-size: 14px;
         font-weight: 600;
       }
@@ -292,7 +296,7 @@
         font-family: var(--display);
         font-size: clamp(42px, 6vw, 72px);
         font-weight: 600;
-        letter-spacing: -0.04em;
+        letter-spacing: 0;
         line-height: 1;
       }
 
@@ -307,15 +311,18 @@
       .studio-frame {
         position: relative;
         padding: 12px;
-        border: 1px solid var(--ink);
-        border-radius: 8px;
-        background: #f9faf7;
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: #fffdf8;
+        box-shadow:
+          0 3px 0 var(--line),
+          0 18px 42px rgb(92 54 47 / 13%);
       }
 
       .studio-frame img {
         width: 100%;
         border: 1px solid var(--line);
-        border-radius: 4px;
+        border-radius: 20px;
       }
 
       .contact-strip {
@@ -330,7 +337,7 @@
         min-height: 260px;
         margin: 0;
         overflow: hidden;
-        border-radius: 6px;
+        border-radius: 22px;
         background: var(--night-soft);
       }
 
@@ -347,7 +354,7 @@
         bottom: 10px;
         padding: 6px 9px;
         border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 4px;
+        border-radius: 10px;
         background: rgba(10, 15, 14, 0.84);
         color: rgba(255, 255, 255, 0.8);
         font-size: 11px;
@@ -355,7 +362,7 @@
 
       .dark-band {
         background: var(--night);
-        color: #edf2ea;
+        color: #fff7ec;
       }
 
       .dark-band .section {
@@ -371,7 +378,7 @@
         font-family: var(--display);
         font-size: clamp(44px, 6vw, 78px);
         font-weight: 500;
-        letter-spacing: -0.04em;
+        letter-spacing: 0;
         line-height: 0.98;
       }
 
@@ -395,7 +402,7 @@
       }
 
       .flow-item strong {
-        color: #f18a61;
+        color: var(--candy-yellow);
         font-family: var(--display);
         font-size: 15px;
       }
@@ -460,7 +467,7 @@
         font-family: var(--display);
         font-size: clamp(36px, 5vw, 62px);
         font-weight: 600;
-        letter-spacing: -0.04em;
+        letter-spacing: 0;
         line-height: 1.02;
       }
 
