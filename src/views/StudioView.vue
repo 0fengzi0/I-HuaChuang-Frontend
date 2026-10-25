@@ -79,6 +79,7 @@ const references = ref<ReferencePreview[]>([])
 const uploadError = ref('')
 const submitError = ref('')
 const submitting = ref(false)
+const launchFeedback = ref(false)
 const activeGenerationId = ref('')
 const selectedAssetId = ref('')
 const downloading = ref(false)
@@ -88,6 +89,7 @@ const previewDialog = ref<HTMLDialogElement | null>(null)
 const advancedOpen = ref(false)
 const stageOpen = ref(false)
 let terminalGenerationID = ''
+let generationStageTimer: number | undefined
 
 const generationQuery = useQuery({
   queryKey: computed(() => ['generation', activeGenerationId.value]),
@@ -471,6 +473,9 @@ function clearReferences() {
 
 async function submitGeneration() {
   submitError.value = ''
+  if (submitting.value) {
+    return
+  }
   if (!prompt.value.trim()) {
     submitError.value = '请先描述要生成的画面。'
     return
@@ -484,7 +489,16 @@ async function submitGeneration() {
     return
   }
   submitting.value = true
-  stageOpen.value = true
+  launchFeedback.value = true
+  window.clearTimeout(generationStageTimer)
+  generationStageTimer = window.setTimeout(
+    () => {
+      stageOpen.value = true
+      launchFeedback.value = false
+      generationStageTimer = undefined
+    },
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 220 : 480,
+  )
   activeGenerationId.value = ''
   selectedAssetId.value = ''
   try {
@@ -512,6 +526,9 @@ async function submitGeneration() {
     notifications.push('任务已提交，积分已按张数冻结。', 'success')
     await queryClient.invalidateQueries({ queryKey: ['generations', 'recent'] })
   } catch (error) {
+    window.clearTimeout(generationStageTimer)
+    generationStageTimer = undefined
+    launchFeedback.value = false
     submitError.value = error instanceof APIError ? error.message : '任务提交失败，请稍后重试。'
   } finally {
     submitting.value = false
@@ -532,6 +549,9 @@ function startNewGeneration() {
   count.value = 1
   advancedOpen.value = false
   submitError.value = ''
+  window.clearTimeout(generationStageTimer)
+  generationStageTimer = undefined
+  launchFeedback.value = false
   stageOpen.value = false
   activeGenerationId.value = ''
   selectedAssetId.value = ''
@@ -745,6 +765,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  window.clearTimeout(generationStageTimer)
   clearReferences()
 })
 </script>
@@ -1021,7 +1042,10 @@ onBeforeUnmount(() => {
       </section>
 
       <aside class="control-rail" aria-label="创作设置">
-        <section class="tool-card prompt-card" :class="{ 'compact-editor': stageVisible }">
+        <section
+          class="tool-card prompt-card"
+          :class="{ 'compact-editor': stageVisible, 'is-launching': launchFeedback }"
+        >
           <template v-if="!stageVisible">
           <div class="card-heading">
             <h2>描述你想要的画面</h2>
@@ -1127,9 +1151,11 @@ onBeforeUnmount(() => {
             <div class="prompt-action-right">
               <span class="available-credit">可用 {{ availableCredits }} 积分</span>
               <button
-                class="button button--primary prompt-generate"
+                class="button button--primary prompt-generate generate-action"
+                :class="{ 'is-launching': launchFeedback }"
                 type="button"
                 :disabled="!canSubmit"
+                :aria-busy="launchFeedback"
                 @click="submitGeneration"
               >
                 <LoaderCircle
@@ -1139,7 +1165,8 @@ onBeforeUnmount(() => {
                   aria-hidden="true"
                 />
                 <Aperture v-else :size="17" aria-hidden="true" />
-                <span v-if="submitting">正在准备</span>
+                <span v-if="launchFeedback">正在准备画布</span>
+                <span v-else-if="submitting">正在提交</span>
                 <span v-else-if="taskIsActive">正在绘制</span>
                 <span v-else-if="publicSettings?.generationReady">开始生成</span>
                 <span v-else>服务未连接</span>
@@ -1225,8 +1252,10 @@ onBeforeUnmount(() => {
             <div class="compact-actions">
               <button
                 type="button"
-                class="button button--primary compact-generate"
+                class="button button--primary compact-generate generate-action"
+                :class="{ 'is-launching': launchFeedback }"
                 :disabled="!canSubmit"
+                :aria-busy="launchFeedback"
                 @click="submitGeneration"
               >
                 <LoaderCircle
@@ -1238,18 +1267,19 @@ onBeforeUnmount(() => {
                 <Aperture v-else :size="15" aria-hidden="true" />
                 <span v-if="submitting">准备中</span>
                 <span v-else-if="taskIsActive">绘制中</span>
-                <span v-else>再画一张</span>
+                <span v-else>生成另一张</span>
                 <strong>{{ totalCost }} 积分</strong>
               </button>
               <button
                 type="button"
                 class="compact-reset"
-                aria-label="新生成"
+                aria-label="重新创作，清空当前内容"
+                title="清空当前内容，重新开始创作"
                 :disabled="taskIsActive || submitting"
                 @click="startNewGeneration"
               >
                 <RotateCcw :size="15" aria-hidden="true" />
-                <span>新生成</span>
+                <span>重新创作</span>
               </button>
             </div>
           </template>
@@ -3010,6 +3040,18 @@ onBeforeUnmount(() => {
 
 .prompt-card {
   border-color: var(--line);
+  transition:
+    border-color 240ms var(--ease-out),
+    box-shadow 240ms var(--ease-out),
+    padding 360ms var(--ease-out),
+    border-radius 360ms var(--ease-out);
+}
+
+.prompt-card.is-launching {
+  border-color: color-mix(in srgb, var(--action) 42%, var(--line));
+  box-shadow:
+    0 0 0 4px var(--focus-ring),
+    var(--shadow-card);
 }
 
 .reference-card,
@@ -4408,6 +4450,75 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 16px rgb(200 102 125 / 16%);
 }
 
+.generate-action {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.generate-action > * {
+  position: relative;
+  z-index: 1;
+}
+
+.generate-action::after {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 58%);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.2);
+}
+
+.generate-action.is-launching {
+  animation: generate-action-press 460ms var(--ease-out) both;
+}
+
+.generate-action.is-launching::after {
+  animation: generate-action-wave 460ms ease-out both;
+}
+
+@keyframes generate-action-press {
+  0% {
+    transform: scale(1);
+  }
+
+  22% {
+    transform: scale(0.94);
+  }
+
+  62% {
+    transform: scale(1.025);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes generate-action-wave {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+
+  26% {
+    opacity: 0.42;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(18);
+  }
+}
+
 .prompt-generate strong {
   padding-left: 9px;
   border-left: 1px solid rgb(255 255 255 / 34%);
@@ -4444,6 +4555,20 @@ onBeforeUnmount(() => {
   border-radius: 18px;
   background: var(--surface);
   box-shadow: var(--shadow-card);
+  transform-origin: top center;
+  animation: compact-editor-settle 360ms var(--ease-out) both;
+}
+
+@keyframes compact-editor-settle {
+  from {
+    opacity: 0.68;
+    transform: translateY(-8px) scaleY(0.84);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
 }
 
 .compact-fields {
@@ -4619,6 +4744,7 @@ onBeforeUnmount(() => {
   min-height: 42px;
   padding: 0 13px;
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .compact-generate strong {
@@ -4720,12 +4846,8 @@ onBeforeUnmount(() => {
   }
 
   .compact-reset {
-    width: 40px;
-    padding: 0;
-  }
-
-  .compact-reset span {
-    display: none;
+    width: auto;
+    padding: 0 9px;
   }
 }
 
@@ -4777,7 +4899,10 @@ onBeforeUnmount(() => {
 
   .workspace,
   .studio-hero__status i.is-active,
-  .canvas-live i.is-processing {
+  .canvas-live i.is-processing,
+  .compact-editor,
+  .generate-action.is-launching,
+  .generate-action.is-launching::after {
     animation: none;
   }
 }

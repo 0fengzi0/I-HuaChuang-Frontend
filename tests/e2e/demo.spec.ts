@@ -1,21 +1,32 @@
 import { expect, test } from '@playwright/test'
 
 test('loads the demo studio and main routes', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.goto('./')
   await expect(page).toHaveURL(/#\/studio$/)
   await expect(page.getByRole('link', { name: 'I画创工作台' })).toBeVisible()
   await expect(page.locator('.workspace')).toHaveCount(0)
 
   await page.locator('textarea').first().fill('蓝橙油墨在暖白色光桌上扩散')
-  const generateButton = page
-    .locator('button:visible')
-    .filter({ hasText: '开始生成' })
-    .first()
+  const generateButton = page.locator('.prompt-generate')
+  await expect(generateButton).toContainText('开始生成')
   await expect(generateButton).toBeEnabled()
   await page.locator('.prompt-card').evaluate((element) => {
     ;(window as Window & { __studioEditor?: Element }).__studioEditor = element
   })
-  await generateButton.evaluate((button: HTMLElement) => button.click())
+  const launchSnapshot = await page.evaluate(async () => {
+    const button = document.querySelector<HTMLButtonElement>('.prompt-generate')
+    button?.click()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    return {
+      className: button?.className ?? '',
+      text: button?.textContent ?? '',
+      animationName: button ? getComputedStyle(button).animationName : '',
+    }
+  })
+  expect(launchSnapshot.className).toContain('is-launching')
+  expect(launchSnapshot.text).toContain('正在准备画布')
+  expect(launchSnapshot.animationName).toContain('generate-action-press')
   await expect(page.locator('.workspace')).toBeVisible()
   expect(
     await page.evaluate(
@@ -36,8 +47,10 @@ test('loads the demo studio and main routes', async ({ page }) => {
   await expect(page.locator('.control-rail')).toBeVisible()
   await expect(page.locator('.prompt-card')).toHaveClass(/compact-editor/)
   await expect(page.getByText('调整下一张')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /生成另一张/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /再画一张/ })).toHaveCount(0)
 
-  await page.getByRole('button', { name: '新生成' }).click()
+  await page.getByRole('button', { name: '重新创作，清空当前内容' }).click()
   await expect(page.locator('.workspace')).toHaveCount(0)
   await expect(page.locator('textarea').first()).toHaveValue('')
 
