@@ -53,6 +53,9 @@ test('loads the demo studio and main routes', async ({ page }) => {
   await page.getByRole('button', { name: '重新创作，清空当前内容' }).click()
   await expect(page.locator('.workspace')).toHaveCount(0)
   await expect(page.locator('textarea').first()).toHaveValue('')
+  await expect(page.locator('.detail-settings select')).toHaveCount(2)
+  const ratioOption = page.locator('.quick-settings select option[value="9:16"]')
+  expect(await ratioOption.textContent()).toContain('抖音常用')
 
   await page.getByRole('button', { name: '打开最近作品' }).click()
   const recentDialog = page.getByRole('dialog')

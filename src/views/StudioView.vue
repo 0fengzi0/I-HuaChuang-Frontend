@@ -16,7 +16,6 @@ import {
   Minus,
   Plus,
   RotateCcw,
-  SlidersHorizontal,
   Sparkles,
   Upload,
   WandSparkles,
@@ -86,7 +85,6 @@ const downloading = ref(false)
 const favoriteSaving = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const previewDialog = ref<HTMLDialogElement | null>(null)
-const advancedOpen = ref(false)
 const stageOpen = ref(false)
 let terminalGenerationID = ''
 let generationStageTimer: number | undefined
@@ -155,17 +153,18 @@ const aspectRatioOptions: Array<{
   value: AspectRatioValue
   label: string
   ratio: string
+  hint: string
 }> = [
-  { value: '1:1', label: '方形', ratio: '1 : 1' },
-  { value: '3:2', label: '横向', ratio: '3 : 2' },
-  { value: '2:3', label: '纵向', ratio: '2 : 3' },
-  { value: '16:9', label: '宽屏', ratio: '16 : 9' },
-  { value: '9:16', label: '竖屏', ratio: '9 : 16' },
-  { value: '4:3', label: '经典', ratio: '4 : 3' },
-  { value: '3:4', label: '竖版', ratio: '3 : 4' },
-  { value: '21:9', label: '超宽', ratio: '21 : 9' },
-  { value: '9:21', label: '超长', ratio: '9 : 21' },
-  { value: 'original', label: '原始', ratio: '随原图' },
+  { value: '1:1', label: '方形', ratio: '1 : 1', hint: '头像、封面' },
+  { value: '3:2', label: '横向', ratio: '3 : 2', hint: '网页配图' },
+  { value: '2:3', label: '纵向', ratio: '2 : 3', hint: '海报、书页' },
+  { value: '16:9', label: '宽屏', ratio: '16 : 9', hint: '视频封面' },
+  { value: '9:16', label: '竖屏', ratio: '9 : 16', hint: '抖音常用' },
+  { value: '4:3', label: '经典', ratio: '4 : 3', hint: '电脑壁纸' },
+  { value: '3:4', label: '竖版', ratio: '3 : 4', hint: '聊天分享' },
+  { value: '21:9', label: '超宽', ratio: '21 : 9', hint: '横幅、全景' },
+  { value: '9:21', label: '超长', ratio: '9 : 21', hint: '长图、手机全屏' },
+  { value: 'original', label: '原始', ratio: '随原图', hint: '保持参考图比例' },
 ]
 
 const resolutionOptions: Array<{
@@ -547,7 +546,6 @@ function startNewGeneration() {
   quality.value = 'auto'
   background.value = 'auto'
   count.value = 1
-  advancedOpen.value = false
   submitError.value = ''
   window.clearTimeout(generationStageTimer)
   generationStageTimer = undefined
@@ -1071,6 +1069,47 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
+          <input
+            ref="fileInput"
+            class="visually-hidden"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            :disabled="taskIsActive || submitting"
+            @change="handleFiles"
+          />
+          <div
+            v-if="mode === 'edit'"
+            class="inline-references"
+            :class="{ 'is-empty': references.length === 0 }"
+          >
+            <div v-for="reference in references" :key="reference.id" class="reference-thumb">
+              <img :src="reference.url" :alt="reference.file.name" />
+              <button
+                type="button"
+                :aria-label="`移除 ${reference.file.name}`"
+                :title="`移除 ${reference.file.name}`"
+                :disabled="taskIsActive || submitting"
+                @click="removeReference(reference.id)"
+              >
+                <X :size="12" aria-hidden="true" />
+              </button>
+            </div>
+            <button
+              v-if="references.length < 4"
+              type="button"
+              class="reference-add"
+              :disabled="taskIsActive || submitting"
+              @click="openFilePicker"
+            >
+              <Upload :size="16" aria-hidden="true" />
+              <span>添加参考图 {{ references.length }} / 4</span>
+            </button>
+          </div>
+          <p v-if="mode === 'edit' && uploadError" class="field-error" role="alert">
+            {{ uploadError }}
+          </p>
+
           <div class="quick-settings">
             <label class="quick-control">
               <span>图片比例</span>
@@ -1086,7 +1125,7 @@ onBeforeUnmount(() => {
                     :value="ratio.value"
                     :disabled="ratio.value === 'original' && !originalRatioAvailable"
                   >
-                    {{ ratio.label }} · {{ ratio.ratio }}
+                    {{ ratio.label }} {{ ratio.ratio }} · {{ ratio.hint }}
                   </option>
                 </select>
                 <ChevronDown :size="15" aria-hidden="true" />
@@ -1136,18 +1175,41 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="prompt-action-row">
-            <button
-              type="button"
-              class="advanced-toggle"
-              :aria-expanded="advancedOpen"
-              @click="advancedOpen = !advancedOpen"
-            >
-              <SlidersHorizontal :size="16" aria-hidden="true" />
-              {{ advancedOpen ? '收起画面细节' : '画面细节' }}
-              <ChevronDown :size="15" :class="{ 'is-open': advancedOpen }" aria-hidden="true" />
-            </button>
+          <div class="detail-settings" aria-label="画面细节">
+            <label class="parameter-block">
+              <span class="parameter-label">画面质量</span>
+              <span class="select-wrap">
+                <select v-model="quality" :disabled="taskIsActive || submitting">
+                  <option
+                    v-for="option in qualityOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+                <ChevronDown :size="16" aria-hidden="true" />
+              </span>
+            </label>
 
+            <label class="parameter-block">
+              <span class="parameter-label">背景</span>
+              <span class="select-wrap">
+                <select v-model="background" :disabled="taskIsActive || submitting">
+                  <option
+                    v-for="option in backgroundOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+                <ChevronDown :size="16" aria-hidden="true" />
+              </span>
+            </label>
+          </div>
+
+          <div class="prompt-action-row">
             <div class="prompt-action-right">
               <span class="available-credit">可用 {{ availableCredits }} 积分</span>
               <button
@@ -1284,91 +1346,6 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </section>
-
-        <section v-if="!stageVisible && mode === 'edit'" class="tool-card reference-card">
-          <div class="card-heading">
-            <h2>添加参考图</h2>
-            <span class="char-count">{{ references.length }} / 4</span>
-          </div>
-          <input
-            ref="fileInput"
-            class="visually-hidden"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            multiple
-            :disabled="taskIsActive || submitting"
-            @change="handleFiles"
-          />
-          <div class="reference-grid">
-            <div v-for="reference in references" :key="reference.id" class="reference-item">
-              <img :src="reference.url" :alt="reference.file.name" />
-              <button
-                type="button"
-                :aria-label="`移除 ${reference.file.name}`"
-                :title="`移除 ${reference.file.name}`"
-                :disabled="taskIsActive || submitting"
-                @click="removeReference(reference.id)"
-              >
-                <X :size="14" aria-hidden="true" />
-              </button>
-            </div>
-            <button
-              v-if="references.length < 4"
-              type="button"
-              class="reference-add"
-              :disabled="taskIsActive || submitting"
-              @click="openFilePicker"
-            >
-              <Upload :size="18" aria-hidden="true" />
-              <span>添加图片</span>
-            </button>
-          </div>
-          <p class="card-note">支持 PNG、JPEG、WebP，单张不超过 10 MB</p>
-          <p v-if="uploadError" class="field-error" role="alert">{{ uploadError }}</p>
-        </section>
-
-        <Transition v-if="!stageVisible" name="advanced">
-          <section v-if="advancedOpen" class="tool-card parameters-card">
-            <div class="card-heading">
-              <h2>画面细节</h2>
-              <SlidersHorizontal :size="17" aria-hidden="true" />
-            </div>
-
-            <div class="detail-options">
-              <label class="parameter-block">
-                <span class="parameter-label">画面质量</span>
-                <span class="select-wrap">
-                  <select v-model="quality" :disabled="taskIsActive || submitting">
-                    <option
-                      v-for="option in qualityOptions"
-                      :key="option.value"
-                      :value="option.value"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </select>
-                  <ChevronDown :size="16" aria-hidden="true" />
-                </span>
-              </label>
-
-              <label class="parameter-block">
-                <span class="parameter-label">背景</span>
-                <span class="select-wrap">
-                  <select v-model="background" :disabled="taskIsActive || submitting">
-                    <option
-                      v-for="option in backgroundOptions"
-                      :key="option.value"
-                      :value="option.value"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </select>
-                  <ChevronDown :size="16" aria-hidden="true" />
-                </span>
-              </label>
-            </div>
-          </section>
-        </Transition>
 
       </aside>
 
@@ -1510,22 +1487,12 @@ onBeforeUnmount(() => {
   box-shadow: 0 7px 22px color-mix(in srgb, var(--shadow-color) 55%, transparent);
 }
 
-.prompt-card,
-.reference-card,
-.parameters-card {
+.prompt-card {
   padding: 14px;
 }
 
 .prompt-card {
   border-color: color-mix(in srgb, var(--action) 28%, var(--line));
-}
-
-.reference-card {
-  border-color: var(--line);
-}
-
-.parameters-card {
-  border-color: var(--line);
 }
 
 .card-heading {
@@ -1558,8 +1525,7 @@ onBeforeUnmount(() => {
 }
 
 .char-count,
-.parameter-label,
-.card-note {
+.parameter-label {
   color: var(--muted);
   font-size: 10px;
 }
@@ -1609,75 +1575,6 @@ onBeforeUnmount(() => {
 .prompt-suggestions button:hover {
   border-color: var(--line-strong);
   color: var(--ink);
-}
-
-.reference-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.reference-item {
-  position: relative;
-  aspect-ratio: 1;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-}
-
-.reference-item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.reference-item button {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  border: 0;
-  border-radius: 10px;
-  background: rgb(15 18 17 / 72%);
-  color: #fff;
-  cursor: pointer;
-}
-
-.reference-add {
-  display: flex;
-  aspect-ratio: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 9px;
-}
-
-.reference-add:hover {
-  border-color: var(--action);
-  color: var(--action);
-}
-
-.card-note {
-  margin: 8px 0 0;
-  line-height: 1.5;
-}
-
-.parameters-card {
-  display: grid;
-  gap: 13px;
-}
-
-.parameters-card .card-heading {
-  margin-bottom: 0;
 }
 
 .parameter-block {
@@ -3032,9 +2929,7 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-card);
 }
 
-.prompt-card,
-.reference-card,
-.parameters-card {
+.prompt-card {
   padding: 24px;
 }
 
@@ -3054,11 +2949,6 @@ onBeforeUnmount(() => {
     var(--shadow-card);
 }
 
-.reference-card,
-.parameters-card {
-  border-color: var(--line);
-}
-
 .card-heading {
   display: flex;
   align-items: flex-start;
@@ -3075,8 +2965,7 @@ onBeforeUnmount(() => {
 }
 
 .char-count,
-.parameter-label,
-.card-note {
+.parameter-label {
   color: var(--muted);
   font-size: 10px;
 }
@@ -3125,8 +3014,7 @@ onBeforeUnmount(() => {
   margin-top: 10px;
 }
 
-.prompt-suggestions button,
-.advanced-toggle {
+.prompt-suggestions button {
   min-height: 32px;
   padding: 0 10px;
   border: 1px solid var(--line);
@@ -3142,15 +3030,78 @@ onBeforeUnmount(() => {
     transform 90ms ease-out;
 }
 
-.prompt-suggestions button:hover:not(:disabled),
-.advanced-toggle:hover {
+.prompt-suggestions button:hover:not(:disabled) {
   border-color: var(--line-strong);
   background: var(--surface-hover);
   color: var(--ink);
 }
 
-.prompt-suggestions button:active:not(:disabled),
-.advanced-toggle:active {
+.prompt-suggestions button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.inline-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.reference-thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.reference-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reference-thumb button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(20 21 24 / 70%);
+  color: #fff;
+  cursor: pointer;
+}
+
+.reference-add {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface-muted);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  transition:
+    border-color 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.reference-add:hover:not(:disabled) {
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.reference-add:active:not(:disabled) {
   transform: scale(0.97);
 }
 
@@ -3159,6 +3110,13 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 20px;
+}
+
+.detail-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .quick-control {
@@ -3222,10 +3180,11 @@ onBeforeUnmount(() => {
 .resolution-toggle button {
   display: flex;
   min-width: 0;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 0 5px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 5px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
@@ -3250,11 +3209,13 @@ onBeforeUnmount(() => {
 }
 
 .resolution-toggle strong {
+  line-height: 1;
   font-size: 11px;
   font-weight: 600;
 }
 
 .resolution-toggle small {
+  max-width: 100%;
   overflow: hidden;
   color: var(--muted);
   font-size: 8px;
@@ -3304,118 +3265,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 500;
   text-align: center;
-}
-
-.advanced-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 16px;
-}
-
-.advanced-toggle svg:last-child {
-  transition: transform 180ms var(--ease-out);
-}
-
-.advanced-toggle svg:last-child.is-open {
-  transform: rotate(180deg);
-}
-
-.advanced-enter-active,
-.advanced-leave-active {
-  transition:
-    opacity 180ms var(--ease-out),
-    transform 180ms var(--ease-out);
-}
-
-.advanced-enter-from,
-.advanced-leave-to {
-  opacity: 0;
-  transform: translateY(-5px);
-}
-
-.reference-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.reference-item {
-  position: relative;
-  aspect-ratio: 1;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
-}
-
-.reference-item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.reference-item button {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgb(20 21 24 / 70%);
-  color: #fff;
-  cursor: pointer;
-}
-
-.reference-add {
-  display: flex;
-  aspect-ratio: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 9px;
-  transition:
-    border-color 160ms var(--ease-out),
-    color 160ms var(--ease-out),
-    transform 90ms ease-out;
-}
-
-.reference-add:hover:not(:disabled) {
-  border-color: var(--action);
-  color: var(--action);
-}
-
-.reference-add:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.card-note {
-  margin: 9px 0 0;
-  line-height: 1.55;
-}
-
-.parameters-card {
-  display: grid;
-  gap: 16px;
-}
-
-.detail-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.parameters-card .card-heading {
-  margin-bottom: 0;
 }
 
 .parameter-block {
@@ -4263,9 +4112,7 @@ onBeforeUnmount(() => {
     grid-row: 2;
   }
 
-  .prompt-card,
-  .reference-card,
-  .parameters-card {
+  .prompt-card {
     padding: 18px;
   }
 
@@ -4281,6 +4128,10 @@ onBeforeUnmount(() => {
     gap: 12px 10px;
   }
 
+  .detail-settings {
+    grid-template-columns: 1fr;
+  }
+
   .quick-settings .quick-control:last-child {
     display: flex;
     grid-column: 1 / -1;
@@ -4290,14 +4141,6 @@ onBeforeUnmount(() => {
 
   .size-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .detail-options {
-    grid-template-columns: 1fr;
-  }
-
-  .reference-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .canvas-head {
@@ -4422,10 +4265,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 16px;
   margin-top: 16px;
-}
-
-.prompt-action-row .advanced-toggle {
-  margin-top: 0;
 }
 
 .prompt-action-right {
@@ -4892,8 +4731,7 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .studio-hero,
   .studio-toolbar,
-  .canvas-media,
-  .advanced-toggle svg:last-child {
+  .canvas-media {
     transition: none;
   }
 
