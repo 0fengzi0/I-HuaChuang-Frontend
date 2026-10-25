@@ -10,7 +10,7 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: 'http://127.0.0.1:5180/I-HuaChuang-Frontend/app/',
-    channel: 'msedge',
+    channel: process.env.CI ? undefined : 'msedge',
     locale: 'zh-CN',
     timezoneId: 'Asia/Shanghai',
     trace: 'retain-on-failure',
