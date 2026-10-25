@@ -153,18 +153,17 @@ const aspectRatioOptions: Array<{
   value: AspectRatioValue
   label: string
   ratio: string
-  shape: string
 }> = [
-  { value: '1:1', label: '方形', ratio: '1 : 1', shape: 'square' },
-  { value: '3:2', label: '横向', ratio: '3 : 2', shape: 'landscape' },
-  { value: '2:3', label: '纵向', ratio: '2 : 3', shape: 'portrait' },
-  { value: '16:9', label: '宽屏', ratio: '16 : 9', shape: 'wide' },
-  { value: '9:16', label: '竖屏', ratio: '9 : 16', shape: 'tall' },
-  { value: '4:3', label: '经典', ratio: '4 : 3', shape: 'classic' },
-  { value: '3:4', label: '竖版', ratio: '3 : 4', shape: 'classic-portrait' },
-  { value: '21:9', label: '超宽', ratio: '21 : 9', shape: 'ultra-wide' },
-  { value: '9:21', label: '超长', ratio: '9 : 21', shape: 'ultra-tall' },
-  { value: 'original', label: '原始', ratio: '随原图', shape: 'original' },
+  { value: '1:1', label: '方形', ratio: '1 : 1' },
+  { value: '3:2', label: '横向', ratio: '3 : 2' },
+  { value: '2:3', label: '纵向', ratio: '2 : 3' },
+  { value: '16:9', label: '宽屏', ratio: '16 : 9' },
+  { value: '9:16', label: '竖屏', ratio: '9 : 16' },
+  { value: '4:3', label: '经典', ratio: '4 : 3' },
+  { value: '3:4', label: '竖版', ratio: '3 : 4' },
+  { value: '21:9', label: '超宽', ratio: '21 : 9' },
+  { value: '9:21', label: '超长', ratio: '9 : 21' },
+  { value: 'original', label: '原始', ratio: '随原图' },
 ]
 
 const resolutionOptions: Array<{
@@ -224,12 +223,6 @@ const samplePrompts = [
 
 const unitCost = computed(() => publicSettings.value?.pricing[selectedResolution.value] ?? 0)
 const totalCost = computed(() => unitCost.value * count.value)
-const resolutionIndex = computed({
-  get: () => resolutionOptions.findIndex((option) => option.value === selectedResolution.value),
-  set: (index: number) => {
-    selectedResolution.value = resolutionOptions[index]?.value ?? '1K'
-  },
-})
 const originalReference = computed(() =>
   references.value.find((reference) => reference.width > 0 && reference.height > 0),
 )
@@ -374,13 +367,6 @@ function incrementCount() {
 
 function choosePrompt(value: string) {
   prompt.value = value
-}
-
-function selectAspectRatio(value: AspectRatioValue) {
-  if (value === 'original' && !originalRatioAvailable.value) {
-    return
-  }
-  selectedAspectRatio.value = value
 }
 
 function originalTargetSize(width: number, height: number, resolution: ResolutionValue) {
@@ -1139,7 +1125,7 @@ onBeforeUnmount(() => {
             @click="advancedOpen = !advancedOpen"
           >
             <SlidersHorizontal :size="16" aria-hidden="true" />
-            {{ advancedOpen ? '收起详细设置' : '更多设置' }}
+            {{ advancedOpen ? '收起画面细节' : '画面细节' }}
             <ChevronDown :size="15" :class="{ 'is-open': advancedOpen }" aria-hidden="true" />
           </button>
         </section>
@@ -1189,101 +1175,43 @@ onBeforeUnmount(() => {
         <Transition name="advanced">
           <section v-if="advancedOpen" class="tool-card parameters-card">
             <div class="card-heading">
-              <h2>详细设置</h2>
+              <h2>画面细节</h2>
               <SlidersHorizontal :size="17" aria-hidden="true" />
             </div>
 
-            <div class="parameter-block">
-              <span class="parameter-label">画幅比例</span>
-              <div class="size-options" role="radiogroup" aria-label="画幅比例">
-                <button
-                  v-for="ratio in aspectRatioOptions"
-                  :key="ratio.value"
-                  type="button"
-                  role="radio"
-                  :aria-checked="selectedAspectRatio === ratio.value"
-                  :aria-disabled="ratio.value === 'original' && !originalRatioAvailable"
-                  :disabled="
-                    (ratio.value === 'original' && !originalRatioAvailable) ||
-                    taskIsActive ||
-                    submitting
-                  "
-                  :class="{ 'is-selected': selectedAspectRatio === ratio.value }"
-                  :title="
-                    ratio.value === 'original' && !originalRatioAvailable
-                      ? '原始比例需要参考图'
-                      : undefined
-                  "
-                  @click="selectAspectRatio(ratio.value)"
-                >
-                  <span class="size-shape" :class="`size-shape--${ratio.shape}`" />
-                  <span>
-                    <strong>{{ ratio.label }}</strong>
-                    <small>{{ ratio.ratio }}</small>
-                  </span>
-                </button>
-              </div>
+            <div class="detail-options">
+              <label class="parameter-block">
+                <span class="parameter-label">画面质量</span>
+                <span class="select-wrap">
+                  <select v-model="quality" :disabled="taskIsActive || submitting">
+                    <option
+                      v-for="option in qualityOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                  <ChevronDown :size="16" aria-hidden="true" />
+                </span>
+              </label>
+
+              <label class="parameter-block">
+                <span class="parameter-label">背景</span>
+                <span class="select-wrap">
+                  <select v-model="background" :disabled="taskIsActive || submitting">
+                    <option
+                      v-for="option in backgroundOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                  <ChevronDown :size="16" aria-hidden="true" />
+                </span>
+              </label>
             </div>
-
-            <div class="parameter-block resolution-block">
-              <div class="resolution-heading">
-                <span class="parameter-label">分辨率</span>
-                <strong>{{ selectedResolution }} · {{ requestedSize }}</strong>
-              </div>
-              <div class="resolution-slider">
-                <input
-                  v-model.number="resolutionIndex"
-                  type="range"
-                  min="0"
-                  :max="resolutionOptions.length - 1"
-                  step="1"
-                  aria-label="分辨率档位"
-                  :disabled="taskIsActive || submitting"
-                />
-                <div class="resolution-marks">
-                  <button
-                    v-for="option in resolutionOptions"
-                    :key="option.value"
-                    type="button"
-                    :class="{ 'is-active': selectedResolution === option.value }"
-                    :disabled="taskIsActive || submitting"
-                    @click="selectedResolution = option.value"
-                  >
-                    <strong>{{ option.label }}</strong>
-                    <small>{{ option.description }}</small>
-                    <span>{{ publicSettings?.pricing[option.value] ?? '—' }} 积分</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <label class="parameter-block">
-              <span class="parameter-label">画面质量</span>
-              <span class="select-wrap">
-                <select v-model="quality" :disabled="taskIsActive || submitting">
-                  <option v-for="option in qualityOptions" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
-                <ChevronDown :size="16" aria-hidden="true" />
-              </span>
-            </label>
-
-            <label class="parameter-block">
-              <span class="parameter-label">背景</span>
-              <span class="select-wrap">
-                <select v-model="background" :disabled="taskIsActive || submitting">
-                  <option
-                    v-for="option in backgroundOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </option>
-                </select>
-                <ChevronDown :size="16" aria-hidden="true" />
-              </span>
-            </label>
           </section>
         </Transition>
 
@@ -3479,6 +3407,12 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 
+.detail-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .parameters-card .card-heading {
   margin-bottom: 0;
 }
@@ -4365,6 +4299,10 @@ onBeforeUnmount(() => {
 
   .size-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-options {
+    grid-template-columns: 1fr;
   }
 
   .reference-grid {
