@@ -22,6 +22,7 @@ const demoPricing = {
 } as const
 
 let demoCredits = 32
+let demoCheckinClaimed = false
 let demoUser: User = {
   id: 'demo-user',
   username: 'I画创体验用户',
@@ -337,6 +338,15 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
   }
 
   if (url.pathname === '/api/wallet/checkin' && method === 'POST') {
+    if (demoCheckinClaimed) {
+      return {
+        error: {
+          code: 'already_claimed',
+          message: '今天已经签到。',
+        },
+      } as unknown as T
+    }
+    demoCheckinClaimed = true
     demoCredits += 2
     return {
       credits: 2,
@@ -350,8 +360,8 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
   if (url.pathname === '/api/wallet/checkin') {
     return {
       dailyCredits: 2,
-      canClaim: true,
-      claimedToday: false,
+      canClaim: !demoCheckinClaimed,
+      claimedToday: demoCheckinClaimed,
       period: new Date().toISOString().slice(0, 10),
     } as T
   }
