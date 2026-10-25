@@ -223,6 +223,9 @@ const samplePrompts = [
 
 const unitCost = computed(() => publicSettings.value?.pricing[selectedResolution.value] ?? 0)
 const totalCost = computed(() => unitCost.value * count.value)
+const availableCredits = computed(
+  () => auth.user?.availableCredits ?? auth.user?.creditBalance ?? 0,
+)
 const originalReference = computed(() =>
   references.value.find((reference) => reference.width > 0 && reference.height > 0),
 )
@@ -1118,16 +1121,45 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <button
-            type="button"
-            class="advanced-toggle"
-            :aria-expanded="advancedOpen"
-            @click="advancedOpen = !advancedOpen"
-          >
-            <SlidersHorizontal :size="16" aria-hidden="true" />
-            {{ advancedOpen ? '收起画面细节' : '画面细节' }}
-            <ChevronDown :size="15" :class="{ 'is-open': advancedOpen }" aria-hidden="true" />
-          </button>
+          <div class="prompt-action-row">
+            <button
+              type="button"
+              class="advanced-toggle"
+              :aria-expanded="advancedOpen"
+              @click="advancedOpen = !advancedOpen"
+            >
+              <SlidersHorizontal :size="16" aria-hidden="true" />
+              {{ advancedOpen ? '收起画面细节' : '画面细节' }}
+              <ChevronDown :size="15" :class="{ 'is-open': advancedOpen }" aria-hidden="true" />
+            </button>
+
+            <div class="prompt-action-right">
+              <span class="available-credit">可用 {{ availableCredits }} 积分</span>
+              <button
+                class="button button--primary prompt-generate"
+                type="button"
+                :disabled="!canSubmit"
+                @click="submitGeneration"
+              >
+                <LoaderCircle
+                  v-if="submitting || taskIsActive"
+                  class="spin"
+                  :size="17"
+                  aria-hidden="true"
+                />
+                <Aperture v-else :size="17" aria-hidden="true" />
+                <span v-if="submitting">正在准备</span>
+                <span v-else-if="taskIsActive">正在绘制</span>
+                <span v-else-if="publicSettings?.generationReady">开始生成</span>
+                <span v-else>服务未连接</span>
+                <strong>{{ totalCost }} 积分</strong>
+              </button>
+            </div>
+          </div>
+          <p v-if="submitError" class="inline-alert inline-alert--error prompt-error" role="alert">
+            {{ submitError }}
+          </p>
+          <p class="prompt-footnote">按成功生成的图片计费，失败或超时会退回积分。</p>
         </section>
 
         <section v-if="mode === 'edit'" class="tool-card reference-card">
@@ -1215,38 +1247,6 @@ onBeforeUnmount(() => {
           </section>
         </Transition>
 
-        <div class="action-dock">
-          <div class="estimate-row">
-            <div>
-              <span>预计使用</span>
-              <strong>{{ totalCost }} <small>积分</small></strong>
-            </div>
-            <span>{{ count }} 张 × {{ unitCost }}</span>
-          </div>
-
-          <div v-if="submitError" class="inline-alert inline-alert--error" role="alert">
-            {{ submitError }}
-          </div>
-          <button
-            class="button button--primary button--wide generate-button"
-            type="button"
-            :disabled="!canSubmit"
-            @click="submitGeneration"
-          >
-            <LoaderCircle
-              v-if="submitting || taskIsActive"
-              class="spin"
-              :size="18"
-              aria-hidden="true"
-            />
-            <Aperture v-else :size="18" aria-hidden="true" />
-            <span v-if="submitting">正在准备…</span>
-            <span v-else-if="taskIsActive">正在绘制…</span>
-            <span v-else-if="publicSettings?.generationReady">开始生成</span>
-            <span v-else>生成服务未连接</span>
-          </button>
-          <p class="rail-footnote">按成功生成的图片计费，失败或超时会退回积分。</p>
-        </div>
       </aside>
 
       <section v-else class="compact-editor" aria-label="继续编辑">
@@ -1316,7 +1316,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <span class="compact-cost">{{ totalCost }} 积分</span>
+          <span class="compact-cost">可用 {{ availableCredits }} 积分</span>
         </div>
 
         <div class="compact-actions">
@@ -1336,6 +1336,7 @@ onBeforeUnmount(() => {
             <span v-if="submitting">准备中</span>
             <span v-else-if="taskIsActive">绘制中</span>
             <span v-else>再画一张</span>
+            <strong>{{ totalCost }} 积分</strong>
           </button>
           <button
             type="button"
@@ -4425,6 +4426,65 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+.prompt-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.prompt-action-row .advanced-toggle {
+  margin-top: 0;
+}
+
+.prompt-action-right {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.available-credit {
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.prompt-generate {
+  min-height: 42px;
+  padding: 0 14px;
+  font-size: 11px;
+  box-shadow: 0 6px 16px rgb(200 102 125 / 16%);
+}
+
+.prompt-generate strong {
+  padding-left: 9px;
+  border-left: 1px solid rgb(255 255 255 / 34%);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.prompt-generate:disabled {
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.prompt-error {
+  margin-top: 12px;
+}
+
+.prompt-footnote {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
 .compact-editor {
   display: grid;
   min-width: 0;
@@ -4614,6 +4674,15 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 
+.compact-generate strong {
+  padding-left: 7px;
+  border-left: 1px solid rgb(255 255 255 / 34%);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .compact-reset {
   display: inline-flex;
   min-height: 42px;
@@ -4714,6 +4783,21 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 620px) {
+  .prompt-action-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .prompt-action-right {
+    justify-content: space-between;
+  }
+
+  .prompt-generate {
+    flex: 1;
+    justify-content: center;
+  }
+
   .studio-page--creating .studio-hero {
     align-items: start;
     grid-template-columns: 1fr;
