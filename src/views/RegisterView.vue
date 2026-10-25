@@ -2,17 +2,25 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useForm } from 'vee-validate'
-import { toTypedSchema } from '@vee-validate/zod'
-import { z } from 'zod'
 import { Eye, EyeOff, RefreshCw, UserPlus } from 'lucide-vue-next'
 import AuthLayout from '../components/AuthLayout.vue'
 import { APIError, apiRequest } from '../api/client'
 import { useAuthStore } from '../stores/auth'
+import { registerValidationSchema } from '../validation/auth'
 
 interface CaptchaResponse {
   id: string
   image: string
   expiresAt: string
+}
+
+interface RegisterForm {
+  username: string
+  email: string
+  password: string
+  confirmPassword: string
+  captchaAnswer: string
+  termsAccepted: boolean
 }
 
 const auth = useAuthStore()
@@ -22,25 +30,8 @@ const submitError = ref('')
 const captcha = ref<CaptchaResponse | null>(null)
 const captchaLoading = ref(false)
 
-const schema = z
-  .object({
-    username: z
-      .string()
-      .trim()
-      .regex(/^[\p{L}\p{N}_-]{3,24}$/u, '用户名需为 3 到 24 个字符，可使用文字、数字、下划线或短横线。'),
-    email: z.string().trim().email('请输入有效的邮箱地址。'),
-    password: z.string().min(8, '密码至少需要 8 个字符。').max(72, '密码不能超过 72 个字符。'),
-    confirmPassword: z.string(),
-    captchaAnswer: z.string().length(4, '请输入 4 位图形验证码。'),
-    termsAccepted: z.boolean().refine(Boolean, '请先同意用户协议与隐私政策。'),
-  })
-  .refine((values) => values.password === values.confirmPassword, {
-    path: ['confirmPassword'],
-    message: '两次输入的密码不一致。',
-  })
-
-const { handleSubmit, errors, defineField, setErrors } = useForm({
-  validationSchema: toTypedSchema(schema),
+const { handleSubmit, errors, defineField, setErrors } = useForm<RegisterForm>({
+  validationSchema: registerValidationSchema,
   initialValues: {
     username: '',
     email: '',
@@ -78,8 +69,8 @@ const submit = handleSubmit(async (values) => {
   }
   try {
     await auth.register({
-      username: values.username,
-      email: values.email,
+      username: values.username.trim(),
+      email: values.email.trim(),
       password: values.password,
       captchaId: captcha.value.id,
       captchaAnswer: values.captchaAnswer,

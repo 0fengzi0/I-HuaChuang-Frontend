@@ -2,17 +2,22 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useForm } from 'vee-validate'
-import { toTypedSchema } from '@vee-validate/zod'
-import { z } from 'zod'
 import { Eye, EyeOff, KeyRound, RefreshCw } from 'lucide-vue-next'
 import AuthLayout from '../components/AuthLayout.vue'
 import { APIError, apiRequest } from '../api/client'
 import { useAuthStore } from '../stores/auth'
+import { loginValidationSchema } from '../validation/auth'
 
 interface CaptchaResponse {
   id: string
   image: string
   expiresAt: string
+}
+
+interface LoginForm {
+  identifier: string
+  password: string
+  captchaAnswer: string
 }
 
 const auth = useAuthStore()
@@ -24,14 +29,8 @@ const captchaVisible = ref(false)
 const captchaLoading = ref(false)
 const captcha = ref<CaptchaResponse | null>(null)
 
-const { handleSubmit, errors, defineField, setErrors } = useForm({
-  validationSchema: toTypedSchema(
-    z.object({
-      identifier: z.string().trim().min(1, '请输入用户名或邮箱。'),
-      password: z.string().min(1, '请输入密码。'),
-      captchaAnswer: z.string().optional(),
-    }),
-  ),
+const { handleSubmit, errors, defineField, setErrors } = useForm<LoginForm>({
+  validationSchema: loginValidationSchema,
   initialValues: {
     identifier: '',
     password: '',
@@ -64,7 +63,7 @@ const submit = handleSubmit(async (values) => {
   }
   try {
     await auth.login(
-      values.identifier,
+      values.identifier.trim(),
       values.password,
       captchaVisible.value ? captcha.value?.id : '',
       values.captchaAnswer,
