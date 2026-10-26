@@ -1,24 +1,26 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   Aperture,
+  AtSign,
+  Brush,
   CheckCircle2,
   ChevronDown,
   CircleAlert,
   Download,
+  Eraser,
   Expand,
   Heart,
-  Images,
   Info,
+  ImagePlus,
   LoaderCircle,
   Minus,
   Plus,
   RotateCcw,
   Sparkles,
-  Upload,
-  WandSparkles,
+  Trash2,
   X,
 } from 'lucide-vue-next'
 import ProtectedImage from '../components/ProtectedImage.vue'
@@ -50,15 +52,29 @@ type AspectRatioValue =
 type StandardAspectRatioValue = Exclude<AspectRatioValue, 'original'>
 type ResolutionValue = '1K' | '2K'
 type ModeValue = 'generate' | 'edit'
+type WorkflowValue = 'compose' | 'mask'
 type QualityValue = 'auto' | 'low' | 'medium' | 'high'
 type BackgroundValue = 'auto' | 'transparent' | 'opaque'
 
 interface ReferencePreview {
   id: string
+  mention: string
+  sourceAssetId?: string
   file: File
   url: string
   width: number
   height: number
+}
+
+interface UploadedImage {
+  id: string
+  generationId: string
+  width: number
+  height: number
+  mimeType: string
+  expiresAt: string
+  createdAt: string
+  hasThumbnail: boolean
 }
 
 const route = useRoute()
@@ -75,6 +91,20 @@ const quality = ref<QualityValue>('auto')
 const background = ref<BackgroundValue>('auto')
 const count = ref(1)
 const references = ref<ReferencePreview[]>([])
+const uploadedImages = ref<UploadedImage[]>([])
+const imageLibraryOpen = ref(false)
+const imageLibraryLoading = ref(false)
+const imageLibraryError = ref('')
+const selectingImageID = ref('')
+const activeWorkflow = ref<WorkflowValue>('compose')
+const maskReferenceId = ref('')
+const maskTool = ref<'brush' | 'eraser'>('brush')
+const maskBrushSize = ref(24)
+const maskHasStrokes = ref(false)
+const maskCanvas = ref<HTMLCanvasElement | null>(null)
+const maskExportCanvas = ref<HTMLCanvasElement | null>(null)
+const promptTextarea = ref<HTMLTextAreaElement | null>(null)
+const referenceFileInput = ref<HTMLInputElement | null>(null)
 const uploadError = ref('')
 const submitError = ref('')
 const submitting = ref(false)
@@ -83,11 +113,14 @@ const activeGenerationId = ref('')
 const selectedAssetId = ref('')
 const downloading = ref(false)
 const favoriteSaving = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
 const previewDialog = ref<HTMLDialogElement | null>(null)
 const stageOpen = ref(false)
 let terminalGenerationID = ''
 let generationStageTimer: number | undefined
+let pendingMentionStart = -1
+let nextReferenceNumber = 1
+let maskDrawing = false
+let maskLastPoint: { x: number; y: number } | null = null
 
 const generationQuery = useQuery({
   queryKey: computed(() => ['generation', activeGenerationId.value]),
@@ -146,7 +179,8 @@ const canSubmit = computed(
     Boolean(publicSettings.value?.generationReady) &&
     !submitting.value &&
     !taskIsActive.value &&
-    prompt.value.trim().length > 0,
+    prompt.value.trim().length > 0 &&
+    (activeWorkflow.value !== 'mask' || maskHasStrokes.value),
 )
 
 const aspectRatioOptions: Array<{
@@ -156,14 +190,14 @@ const aspectRatioOptions: Array<{
   hint: string
 }> = [
   { value: '1:1', label: '方形', ratio: '1 : 1', hint: '头像、封面' },
-  { value: '3:2', label: '横向', ratio: '3 : 2', hint: '网页配图' },
-  { value: '2:3', label: '纵向', ratio: '2 : 3', hint: '海报、书页' },
-  { value: '16:9', label: '宽屏', ratio: '16 : 9', hint: '视频封面' },
-  { value: '9:16', label: '竖屏', ratio: '9 : 16', hint: '抖音常用' },
-  { value: '4:3', label: '经典', ratio: '4 : 3', hint: '电脑壁纸' },
-  { value: '3:4', label: '竖版', ratio: '3 : 4', hint: '聊天分享' },
-  { value: '21:9', label: '超宽', ratio: '21 : 9', hint: '横幅、全景' },
-  { value: '9:21', label: '超长', ratio: '9 : 21', hint: '长图、手机全屏' },
+  { value: '3:2', label: '横版', ratio: '3 : 2', hint: '网页配图' },
+  { value: '2:3', label: '竖版', ratio: '2 : 3', hint: '海报、书页' },
+  { value: '16:9', label: '横版宽屏', ratio: '16 : 9', hint: '视频封面' },
+  { value: '9:16', label: '竖版全屏', ratio: '9 : 16', hint: '手机、短视频' },
+  { value: '4:3', label: '横版经典', ratio: '4 : 3', hint: '电脑壁纸' },
+  { value: '3:4', label: '竖版经典', ratio: '3 : 4', hint: '聊天分享' },
+  { value: '21:9', label: '横版超宽', ratio: '21 : 9', hint: '横幅、全景' },
+  { value: '9:21', label: '竖版超长', ratio: '9 : 21', hint: '长图、全屏' },
   { value: 'original', label: '原始', ratio: '随原图', hint: '保持参考图比例' },
 ]
 
@@ -217,11 +251,6 @@ const backgroundOptions: Array<{ value: BackgroundValue; label: string }> = [
   { value: 'transparent', label: '透明' },
 ]
 
-const samplePrompts = [
-  '雨后的玻璃温室，蓝橙色油墨在空气中缓慢扩散，真实微距摄影',
-  '一把旧画刷停在被晚霞照亮的宣纸上，保留颜料厚度',
-]
-
 const unitCost = computed(() => publicSettings.value?.pricing[selectedResolution.value] ?? 0)
 const totalCost = computed(() => unitCost.value * count.value)
 const availableCredits = computed(
@@ -229,6 +258,11 @@ const availableCredits = computed(
 )
 const originalReference = computed(() =>
   references.value.find((reference) => reference.width > 0 && reference.height > 0),
+)
+const selectedMaskReference = computed(
+  () =>
+    references.value.find((reference) => reference.id === maskReferenceId.value) ??
+    references.value[0],
 )
 const originalRatioAvailable = computed(
   () => mode.value === 'edit' && Boolean(originalReference.value),
@@ -336,30 +370,20 @@ const statusHint = computed(() => {
   }
 })
 const heroTitle = computed(() => {
-  if (!stageVisible.value) return '今天想画什么？'
-  if (submitting.value || taskIsActive.value) return '正在为你创作'
+  if (!stageVisible.value) return '想生成什么图片？'
+  if (submitting.value || taskIsActive.value) return '正在生成你的图片'
   if (activeStatus.value === 'succeeded' || activeStatus.value === 'partially_succeeded') {
-    return '你的画面完成了'
+    return '你的图片已生成'
   }
-  if (activeStatus.value === 'failed' || stageError.value) return '这次没有完成'
-  return '画面正在展开'
+  if (activeStatus.value === 'failed' || stageError.value) return '这次图片没有生成'
+  return '图片正在生成'
 })
 const heroDescription = computed(() =>
   stageVisible.value
-    ? '图片会留在画布上，下面的描述和参数可以继续调整。'
-    : '写下一句话，选择比例和清晰度，就可以开始。',
+    ? '生成的图片会留在画布上，下面的描述和参数可以继续调整。'
+    : '描述你想要的图片，选择比例和清晰度，就可以开始生成。',
 )
 const renderStages = ['已提交', '正在绘制', '处理图片']
-
-function setMode(nextMode: ModeValue) {
-  mode.value = nextMode
-  if (nextMode === 'generate') {
-    clearReferences()
-    if (selectedAspectRatio.value === 'original') {
-      selectedAspectRatio.value = '1:1'
-    }
-  }
-}
 
 function decrementCount() {
   count.value = Math.max(1, count.value - 1)
@@ -367,10 +391,6 @@ function decrementCount() {
 
 function incrementCount() {
   count.value = Math.min(4, count.value + 1)
-}
-
-function choosePrompt(value: string) {
-  prompt.value = value
 }
 
 function originalTargetSize(width: number, height: number, resolution: ResolutionValue) {
@@ -406,19 +426,66 @@ function readImageDimensions(url: string) {
   })
 }
 
-function openFilePicker() {
-  fileInput.value?.click()
+function mentionRanges(value: string) {
+  return Array.from(value.matchAll(/@图片\d+/g), (match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }))
 }
 
-function handleFiles(event: Event) {
+function focusPromptAt(position: number) {
+  void nextTick(() => {
+    promptTextarea.value?.focus()
+    promptTextarea.value?.setSelectionRange(position, position)
+  })
+}
+
+function appendMentionReferences(added: ReferencePreview[]) {
+  const mentionText = added.map((reference) => reference.mention).join(' ')
+  let insertionStart = prompt.value.length
+  let insertionEnd = insertionStart
+  let prefix = prompt.value && !/\s$/.test(prompt.value) ? ' ' : ''
+  let suffix = ' '
+
+  if (pendingMentionStart >= 0 && prompt.value[pendingMentionStart] === '@') {
+    insertionStart = pendingMentionStart
+    insertionEnd = pendingMentionStart + 1
+    prefix = ''
+    const following = prompt.value.slice(insertionEnd)
+    suffix = following && !/^\s/.test(following) ? ' ' : ''
+  }
+
+  prompt.value =
+    prompt.value.slice(0, insertionStart) +
+    prefix +
+    mentionText +
+    suffix +
+    prompt.value.slice(insertionEnd)
+  mode.value = 'edit'
+  pendingMentionStart = -1
+  focusPromptAt(insertionStart + prefix.length + mentionText.length + suffix.length)
+}
+
+function addReferenceFiles(files: File[], sourceAssetId = '') {
   uploadError.value = ''
-  const input = event.target as HTMLInputElement
-  if (!input.files) {
+  if (files.length === 0) {
+    return
+  }
+  if (references.value.length >= 4) {
+    uploadError.value = '最多可选择 4 张参考图片。'
     return
   }
   const remaining = 4 - references.value.length
-  const files = Array.from(input.files).slice(0, remaining)
-  for (const file of files) {
+  const acceptedFiles = files.slice(0, remaining)
+  const added: ReferencePreview[] = []
+  for (const file of acceptedFiles) {
+    if (
+      sourceAssetId &&
+      references.value.some((reference) => reference.sourceAssetId === sourceAssetId)
+    ) {
+      uploadError.value = '这张已上传图片已经在参考图中。'
+      continue
+    }
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       uploadError.value = '仅支持 PNG、JPEG 或 WebP 图片。'
       continue
@@ -427,14 +494,18 @@ function handleFiles(event: Event) {
       uploadError.value = '单张参考图不能超过 10 MB。'
       continue
     }
+    const mention = `@图片${nextReferenceNumber++}`
     const preview: ReferencePreview = {
       id: crypto.randomUUID(),
+      mention,
+      sourceAssetId: sourceAssetId || undefined,
       file,
       url: URL.createObjectURL(file),
       width: 0,
       height: 0,
     }
     references.value.push(preview)
+    added.push(preview)
     void readImageDimensions(preview.url)
       .then(({ width, height }) => {
         const current = references.value.find((reference) => reference.id === preview.id)
@@ -449,6 +520,180 @@ function handleFiles(event: Event) {
         }
       })
   }
+  if (added.length) {
+    appendMentionReferences(added)
+    if (!maskReferenceId.value) {
+      maskReferenceId.value = added[0].id
+    }
+  }
+}
+
+async function loadUploadedImages() {
+  if (!auth.isAuthenticated || imageLibraryLoading.value) {
+    return
+  }
+  imageLibraryLoading.value = true
+  imageLibraryError.value = ''
+  try {
+    const response = await apiRequest<{ items: UploadedImage[] }>(
+      '/api/reference-assets?limit=24',
+    )
+    uploadedImages.value = response.items
+  } catch (error) {
+    imageLibraryError.value =
+      error instanceof APIError ? error.message : '已上传图片暂时无法读取。'
+  } finally {
+    imageLibraryLoading.value = false
+  }
+}
+
+function closeImageLibrary() {
+  imageLibraryOpen.value = false
+  pendingMentionStart = -1
+}
+
+async function selectUploadedImage(image: UploadedImage) {
+  if (
+    selectingImageID.value ||
+    references.value.some((reference) => reference.sourceAssetId === image.id)
+  ) {
+    return
+  }
+  selectingImageID.value = image.id
+  try {
+    const blob = await apiBlob(
+      `/api/reference-assets/${encodeURIComponent(image.id)}/download`,
+    )
+    const extension = blob.type === 'image/webp' ? 'webp' : 'png'
+    const file = new File([blob], `uploaded-${image.id.slice(-8)}.${extension}`, {
+      type: blob.type || image.mimeType,
+    })
+    addReferenceFiles([file], image.id)
+    imageLibraryOpen.value = false
+  } catch (error) {
+    imageLibraryError.value =
+      error instanceof APIError ? error.message : '已上传图片暂时无法引用。'
+  } finally {
+    selectingImageID.value = ''
+  }
+}
+
+function handlePromptInput(event: Event) {
+  const input = event.target as HTMLTextAreaElement
+  const cursor = input.selectionStart
+  if (cursor === null) {
+    return
+  }
+  if (!input.value.slice(0, cursor).endsWith('@')) {
+    if (
+      pendingMentionStart >= 0 &&
+      input.value[pendingMentionStart] !== '@'
+    ) {
+      imageLibraryOpen.value = false
+      pendingMentionStart = -1
+    }
+    return
+  }
+  if (references.value.length >= 4) {
+    uploadError.value = '最多可选择 4 张参考图片。'
+    return
+  }
+  if (!auth.isAuthenticated) {
+    void router.push({ name: 'login', query: { redirect: route.fullPath } })
+    return
+  }
+  pendingMentionStart = cursor - 1
+  imageLibraryOpen.value = true
+  void loadUploadedImages()
+}
+
+function handlePromptKeydown(event: KeyboardEvent) {
+  if (event.isComposing) {
+    return
+  }
+  if (event.key === 'Escape' && imageLibraryOpen.value) {
+    closeImageLibrary()
+    return
+  }
+  const target = event.currentTarget as HTMLTextAreaElement
+  const cursor = target.selectionStart
+  const selectionEnd = target.selectionEnd
+  if (cursor === null || selectionEnd === null || cursor !== selectionEnd) {
+    return
+  }
+  const ranges = mentionRanges(target.value)
+  const removeRange = (range: { start: number; end: number }) => {
+    event.preventDefault()
+    prompt.value =
+      target.value.slice(0, range.start) + target.value.slice(range.end)
+    focusPromptAt(range.start)
+  }
+
+  if (event.key === 'Backspace') {
+    const range = ranges.find(
+      (candidate) =>
+        candidate.end === cursor ||
+        (candidate.start < cursor && candidate.end > cursor),
+    )
+    if (range) {
+      removeRange(range)
+    }
+    return
+  }
+  if (event.key === 'Delete') {
+    const range = ranges.find(
+      (candidate) =>
+        candidate.start === cursor ||
+        (candidate.start < cursor && candidate.end > cursor),
+    )
+    if (range) {
+      removeRange(range)
+    }
+    return
+  }
+  if (event.key === 'ArrowLeft') {
+    const range = ranges.find((candidate) => candidate.end === cursor)
+    if (range) {
+      event.preventDefault()
+      focusPromptAt(range.start)
+    }
+    return
+  }
+  if (event.key === 'ArrowRight') {
+    const range = ranges.find((candidate) => candidate.start === cursor)
+    if (range) {
+      event.preventDefault()
+      focusPromptAt(range.end)
+    }
+  }
+}
+
+function handlePromptPaste(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
+    file.type.startsWith('image/'),
+  )
+  if (files.length === 0) {
+    return
+  }
+  event.preventDefault()
+  addReferenceFiles(files)
+}
+
+function handlePromptDrop(event: DragEvent) {
+  const files = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
+    file.type.startsWith('image/'),
+  )
+  if (files.length === 0) {
+    return
+  }
+  event.preventDefault()
+  addReferenceFiles(files)
+}
+
+function chooseReferenceFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  addReferenceFiles(files)
   input.value = ''
 }
 
@@ -456,10 +701,20 @@ function removeReference(id: string) {
   const target = references.value.find((item) => item.id === id)
   if (target) {
     URL.revokeObjectURL(target.url)
+    prompt.value = prompt.value
+      .replace(/@图片\d+/g, (mention) => (mention === target.mention ? '' : mention))
+      .replace(/[ \t]{2,}/g, ' ')
   }
   references.value = references.value.filter((item) => item.id !== id)
-  if (references.value.length === 0 && selectedAspectRatio.value === 'original') {
-    selectedAspectRatio.value = '1:1'
+  if (maskReferenceId.value === id) {
+    maskReferenceId.value = references.value[0]?.id ?? ''
+    clearMask()
+  }
+  if (references.value.length === 0) {
+    mode.value = 'generate'
+    if (selectedAspectRatio.value === 'original') {
+      selectedAspectRatio.value = '1:1'
+    }
   }
 }
 
@@ -468,11 +723,198 @@ function clearReferences() {
     URL.revokeObjectURL(reference.url)
   }
   references.value = []
+  maskReferenceId.value = ''
+  maskHasStrokes.value = false
+  clearMask()
+  imageLibraryOpen.value = false
+  pendingMentionStart = -1
+  nextReferenceNumber = 1
+}
+
+watch(prompt, (value) => {
+  const activeMentions = new Set(
+    Array.from(value.matchAll(/@图片\d+/g), (match) => match[0]),
+  )
+  const stale = references.value.filter(
+    (reference) => !activeMentions.has(reference.mention),
+  )
+  if (stale.length === 0) {
+    return
+  }
+  const staleIDs = new Set(stale.map((reference) => reference.id))
+  for (const reference of stale) {
+    URL.revokeObjectURL(reference.url)
+  }
+  references.value = references.value.filter((reference) => !staleIDs.has(reference.id))
+  if (staleIDs.has(maskReferenceId.value)) {
+    maskReferenceId.value = references.value[0]?.id ?? ''
+    clearMask()
+  }
+  if (references.value.length === 0) {
+    mode.value = 'generate'
+    if (selectedAspectRatio.value === 'original') {
+      selectedAspectRatio.value = '1:1'
+    }
+  }
+})
+
+function setWorkflow(workflow: WorkflowValue) {
+  activeWorkflow.value = workflow
+  if (workflow === 'mask') {
+    mode.value = 'edit'
+    if (!maskReferenceId.value && references.value.length) {
+      maskReferenceId.value = references.value[0].id
+    }
+  }
+  void nextTick(initMaskCanvas)
+}
+
+function clearMask() {
+  for (const canvas of [maskCanvas.value, maskExportCanvas.value]) {
+    if (!canvas) {
+      continue
+    }
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+  }
+  maskHasStrokes.value = false
+}
+
+async function initMaskCanvas() {
+  await nextTick()
+  const reference = selectedMaskReference.value
+  const canvas = maskCanvas.value
+  const exportCanvas = maskExportCanvas.value
+  if (activeWorkflow.value !== 'mask' || !reference || !canvas || !exportCanvas) {
+    return
+  }
+  const image = new Image()
+  image.onload = () => {
+    canvas.width = image.naturalWidth
+    canvas.height = image.naturalHeight
+    exportCanvas.width = image.naturalWidth
+    exportCanvas.height = image.naturalHeight
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+    exportCanvas.getContext('2d')?.clearRect(0, 0, exportCanvas.width, exportCanvas.height)
+    maskHasStrokes.value = false
+  }
+  image.src = reference.url
+}
+
+function maskPoint(event: PointerEvent) {
+  const canvas = maskCanvas.value
+  if (!canvas) {
+    return null
+  }
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width === 0 || rect.height === 0) {
+    return null
+  }
+  return {
+    x: (event.clientX - rect.left) * (canvas.width / rect.width),
+    y: (event.clientY - rect.top) * (canvas.height / rect.height),
+  }
+}
+
+function drawMaskSegment(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+) {
+  const targetCanvas = maskCanvas.value
+  const exportCanvas = maskExportCanvas.value
+  if (!targetCanvas || !exportCanvas) {
+    return
+  }
+  drawMaskLine(targetCanvas, from, to, 'rgba(201, 82, 102, 0.62)')
+  drawMaskLine(exportCanvas, from, to, 'rgba(255, 255, 255, 1)')
+}
+
+function drawMaskLine(
+  canvas: HTMLCanvasElement,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  color: string,
+) {
+  const context = canvas.getContext('2d')
+  if (!context) {
+    return
+  }
+  context.save()
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  context.lineWidth = maskBrushSize.value
+  context.strokeStyle = color
+  if (maskTool.value === 'eraser') {
+    context.globalCompositeOperation = 'destination-out'
+    context.strokeStyle = 'rgba(0, 0, 0, 1)'
+  }
+  context.beginPath()
+  context.moveTo(from.x, from.y)
+  context.lineTo(to.x, to.y)
+  context.stroke()
+  context.restore()
+}
+
+function maskPointerDown(event: PointerEvent) {
+  if (taskIsActive.value || submitting.value || !selectedMaskReference.value) {
+    return
+  }
+  const target = event.currentTarget as HTMLCanvasElement
+  const point = maskPoint(event)
+  if (!point) {
+    return
+  }
+  maskDrawing = true
+  maskLastPoint = point
+  maskHasStrokes.value = true
+  target.setPointerCapture(event.pointerId)
+  drawMaskSegment(point, point)
+}
+
+function maskPointerMove(event: PointerEvent) {
+  if (!maskDrawing) {
+    return
+  }
+  const point = maskPoint(event)
+  if (!point) {
+    return
+  }
+  if (maskLastPoint) {
+    drawMaskSegment(maskLastPoint, point)
+  }
+  maskLastPoint = point
+}
+
+function maskPointerEnd(event: PointerEvent) {
+  const target = event.currentTarget as HTMLCanvasElement
+  maskDrawing = false
+  maskLastPoint = null
+  if (target.hasPointerCapture(event.pointerId)) {
+    target.releasePointerCapture(event.pointerId)
+  }
+}
+
+async function buildMaskFile() {
+  const canvas = maskExportCanvas.value
+  const reference = selectedMaskReference.value
+  if (!canvas || !reference) {
+    return null
+  }
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, 'image/png')
+  })
+  if (!blob) {
+    return null
+  }
+  return new File([blob], `${reference.mention}-mask.png`, { type: 'image/png' })
 }
 
 async function submitGeneration() {
   submitError.value = ''
   if (submitting.value) {
+    return
+  }
+  if (!auth.isAuthenticated) {
+    await router.push({ name: 'login', query: { redirect: route.fullPath } })
     return
   }
   if (!prompt.value.trim()) {
@@ -483,8 +925,12 @@ async function submitGeneration() {
     submitError.value = '生成服务尚未连接，请联系管理员配置中转站。'
     return
   }
-  if (mode.value === 'edit' && references.value.length === 0) {
+  if (references.value.length === 0 && (mode.value === 'edit' || activeWorkflow.value === 'mask')) {
     submitError.value = '图生图至少需要一张参考图。'
+    return
+  }
+  if (activeWorkflow.value === 'mask' && !maskHasStrokes.value) {
+    submitError.value = '请先在图片上涂抹要修改的区域。'
     return
   }
   submitting.value = true
@@ -501,16 +947,31 @@ async function submitGeneration() {
   activeGenerationId.value = ''
   selectedAssetId.value = ''
   try {
+    const requestMode = activeWorkflow.value === 'mask' ? 'edit' : mode.value
+    const orderedReferences =
+      activeWorkflow.value === 'mask' && selectedMaskReference.value
+        ? [
+            selectedMaskReference.value,
+            ...references.value.filter((reference) => reference.id !== selectedMaskReference.value?.id),
+          ]
+        : references.value
     const form = new FormData()
-    form.append('mode', mode.value)
+    form.append('mode', requestMode)
     form.append('prompt', prompt.value)
     form.append('aspectRatio', selectedAspectRatio.value)
     form.append('resolution', selectedResolution.value)
     form.append('quality', quality.value)
     form.append('background', background.value)
     form.append('count', String(count.value))
-    for (const reference of references.value) {
+    for (const reference of orderedReferences) {
       form.append('images', reference.file, reference.file.name)
+    }
+    if (activeWorkflow.value === 'mask') {
+      const maskFile = await buildMaskFile()
+      if (!maskFile) {
+        throw new Error('mask export failed')
+      }
+      form.append('mask', maskFile, maskFile.name)
     }
     const created = await apiRequest<CreateGenerationResponse>('/api/generations', {
       method: 'POST',
@@ -539,6 +1000,7 @@ function startNewGeneration() {
     return
   }
   clearReferences()
+  activeWorkflow.value = 'compose'
   mode.value = 'generate'
   prompt.value = ''
   selectedAspectRatio.value = '1:1'
@@ -547,6 +1009,7 @@ function startNewGeneration() {
   background.value = 'auto'
   count.value = 1
   submitError.value = ''
+  uploadError.value = ''
   window.clearTimeout(generationStageTimer)
   generationStageTimer = undefined
   launchFeedback.value = false
@@ -762,6 +1225,12 @@ watch(
   { immediate: true },
 )
 
+watch(
+  [activeWorkflow, () => selectedMaskReference.value?.id],
+  () => void initMaskCanvas(),
+  { flush: 'post' },
+)
+
 onBeforeUnmount(() => {
   window.clearTimeout(generationStageTimer)
   clearReferences()
@@ -790,30 +1259,22 @@ onBeforeUnmount(() => {
     </header>
 
     <div v-if="!stageVisible" class="studio-toolbar">
-      <div class="mode-switch" role="tablist" aria-label="生成模式">
+      <nav class="mode-switch" aria-label="创作方式">
         <button
           type="button"
-          role="tab"
-          :aria-selected="mode === 'generate'"
-          :class="{ 'is-active': mode === 'generate' }"
-          :disabled="taskIsActive || submitting"
-          @click="setMode('generate')"
+          :class="{ 'is-active': activeWorkflow === 'compose' }"
+          @click="setWorkflow('compose')"
         >
-          <WandSparkles :size="16" aria-hidden="true" />
-          用文字画
+          文生图 / 图生图
         </button>
         <button
           type="button"
-          role="tab"
-          :aria-selected="mode === 'edit'"
-          :class="{ 'is-active': mode === 'edit' }"
-          :disabled="taskIsActive || submitting"
-          @click="setMode('edit')"
+          :class="{ 'is-active': activeWorkflow === 'mask' }"
+          @click="setWorkflow('mask')"
         >
-          <Images :size="16" aria-hidden="true" />
-          按图片改
+          图片编辑
         </button>
-      </div>
+      </nav>
       <div class="workspace-status" aria-live="polite">
         <span class="status-dot" :class="{ 'status-dot--ready': publicSettings?.generationReady }" />
         <span v-if="settingsLoading">正在检查生成服务</span>
@@ -1043,48 +1504,209 @@ onBeforeUnmount(() => {
         <section
           class="tool-card prompt-card"
           :class="{ 'compact-editor': stageVisible, 'is-launching': launchFeedback }"
+          @dragover.prevent
+          @drop.prevent="handlePromptDrop"
         >
           <template v-if="!stageVisible">
           <div class="card-heading">
             <h2>描述你想要的画面</h2>
             <span class="char-count">{{ prompt.length }} / 4000</span>
           </div>
-          <textarea
-            v-model="prompt"
-            maxlength="4000"
-            rows="5"
-            placeholder="比如：一位穿白裙子的女孩站在窗边，午后的光很柔和……"
-            aria-label="描述你想要的画面"
-            :disabled="taskIsActive || submitting"
-          />
-          <div class="prompt-suggestions" aria-label="描述参考">
-            <button
-              v-for="(sample, index) in samplePrompts"
-              :key="sample"
-              type="button"
+          <div class="prompt-editor-shell">
+            <textarea
+              ref="promptTextarea"
+              v-model="prompt"
+              maxlength="4000"
+              rows="1"
+              placeholder="描述画面，输入 @ 可指定参考图片……"
+              aria-label="描述你想要的画面"
               :disabled="taskIsActive || submitting"
-              @click="choosePrompt(sample)"
+              @input="handlePromptInput"
+              @keydown="handlePromptKeydown"
+              @paste="handlePromptPaste"
+            />
+            <div
+              v-if="imageLibraryOpen"
+              class="image-library"
+              role="dialog"
+              aria-label="选择已上传图片"
+              @mousedown.prevent
             >
-              试试灵感 {{ index + 1 }}
+              <div class="image-library__head">
+                <div>
+                  <AtSign :size="15" aria-hidden="true" />
+                  <strong>选择已上传图片</strong>
+                </div>
+                <button
+                  type="button"
+                  class="icon-button"
+                  aria-label="关闭图片选择"
+                  @click="closeImageLibrary"
+                >
+                  <X :size="14" aria-hidden="true" />
+                </button>
+              </div>
+              <div v-if="imageLibraryLoading" class="image-library__state">
+                <LoaderCircle class="spin" :size="18" aria-hidden="true" />
+                正在读取图片
+              </div>
+              <div v-else-if="imageLibraryError" class="image-library__state is-error">
+                <CircleAlert :size="17" aria-hidden="true" />
+                {{ imageLibraryError }}
+                <button type="button" class="text-button" @click="loadUploadedImages">
+                  重试
+                </button>
+              </div>
+              <div v-else-if="uploadedImages.length" class="image-library__grid">
+                <button
+                  v-for="(image, index) in uploadedImages"
+                  :key="image.id"
+                  type="button"
+                  class="image-library__item"
+                  :disabled="
+                    Boolean(selectingImageID) ||
+                    references.some((reference) => reference.sourceAssetId === image.id)
+                  "
+                  @click="selectUploadedImage(image)"
+                >
+                  <span class="image-library__preview">
+                    <ProtectedImage
+                      :asset-id="image.id"
+                      kind="reference"
+                      :alt="`已上传图片 ${index + 1}`"
+                      thumbnail
+                    />
+                    <LoaderCircle
+                      v-if="selectingImageID === image.id"
+                      class="spin image-library__loading"
+                      :size="18"
+                      aria-hidden="true"
+                    />
+                    <CheckCircle2
+                      v-else-if="
+                        references.some((reference) => reference.sourceAssetId === image.id)
+                      "
+                      class="image-library__selected"
+                      :size="18"
+                      aria-hidden="true"
+                    />
+                  </span>
+                  <span>
+                    <strong>图片 {{ index + 1 }}</strong>
+                    <small>{{ image.width }} × {{ image.height }}</small>
+                  </span>
+                </button>
+              </div>
+              <div v-else class="image-library__state">
+                还没有已上传图片。先上传或生成一张图片后再用 @ 引用。
+              </div>
+            </div>
+          </div>
+          <div class="reference-actions">
+            <button
+              type="button"
+              class="icon-button reference-add"
+              aria-label="上传参考图"
+              title="上传参考图"
+              :disabled="taskIsActive || submitting || references.length >= 4"
+              @click="referenceFileInput?.click()"
+            >
+              <ImagePlus :size="16" aria-hidden="true" />
             </button>
           </div>
-
           <input
-            ref="fileInput"
-            class="visually-hidden"
+            ref="referenceFileInput"
             type="file"
             accept="image/png,image/jpeg,image/webp"
             multiple
-            :disabled="taskIsActive || submitting"
-            @change="handleFiles"
-          />
+            class="reference-file-input"
+            @change="chooseReferenceFiles"
+          >
           <div
-            v-if="mode === 'edit'"
+            v-if="activeWorkflow === 'mask' && selectedMaskReference"
+            class="mask-editor"
+          >
+            <div class="mask-editor__head">
+              <strong>编辑区域</strong>
+              <label class="mask-base-picker">
+                <span>底图</span>
+                <select v-model="maskReferenceId" :disabled="taskIsActive || submitting">
+                  <option
+                    v-for="reference in references"
+                    :key="reference.id"
+                    :value="reference.id"
+                  >
+                    {{ reference.mention }}
+                  </option>
+                </select>
+                <ChevronDown :size="14" aria-hidden="true" />
+              </label>
+              <div class="mask-tools" role="group" aria-label="蒙版工具">
+                <button
+                  type="button"
+                  :class="{ 'is-active': maskTool === 'brush' }"
+                  :aria-label="'画笔'"
+                  :title="'画笔'"
+                  :disabled="taskIsActive || submitting"
+                  @click="maskTool = 'brush'"
+                >
+                  <Brush :size="15" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  :class="{ 'is-active': maskTool === 'eraser' }"
+                  :aria-label="'橡皮擦'"
+                  :title="'橡皮擦'"
+                  :disabled="taskIsActive || submitting"
+                  @click="maskTool = 'eraser'"
+                >
+                  <Eraser :size="15" aria-hidden="true" />
+                </button>
+                <label class="mask-size">
+                  <span>笔刷</span>
+                  <input
+                    v-model.number="maskBrushSize"
+                    type="range"
+                    min="6"
+                    max="120"
+                    step="2"
+                    :disabled="taskIsActive || submitting"
+                  >
+                </label>
+                <button
+                  type="button"
+                  :aria-label="'清空蒙版'"
+                  :title="'清空蒙版'"
+                  :disabled="taskIsActive || submitting"
+                  @click="clearMask"
+                >
+                  <Trash2 :size="15" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <div class="mask-editor__stage">
+              <img :src="selectedMaskReference.url" :alt="selectedMaskReference.file.name" />
+              <canvas
+                ref="maskCanvas"
+                :aria-label="'蒙版画布'"
+                @pointerdown="maskPointerDown"
+                @pointermove="maskPointerMove"
+                @pointerup="maskPointerEnd"
+                @pointercancel="maskPointerEnd"
+              />
+            </div>
+            <canvas ref="maskExportCanvas" class="visually-hidden" aria-hidden="true"></canvas>
+            <p class="mask-hint">
+              涂抹区域表示需要修改的位置，提交时会作为蒙版发送。
+            </p>
+          </div>
+          <div
+            v-if="mode === 'edit' && references.length"
             class="inline-references"
-            :class="{ 'is-empty': references.length === 0 }"
           >
             <div v-for="reference in references" :key="reference.id" class="reference-thumb">
               <img :src="reference.url" :alt="reference.file.name" />
+              <small>{{ reference.mention }}</small>
               <button
                 type="button"
                 :aria-label="`移除 ${reference.file.name}`"
@@ -1095,16 +1717,6 @@ onBeforeUnmount(() => {
                 <X :size="12" aria-hidden="true" />
               </button>
             </div>
-            <button
-              v-if="references.length < 4"
-              type="button"
-              class="reference-add"
-              :disabled="taskIsActive || submitting"
-              @click="openFilePicker"
-            >
-              <Upload :size="16" aria-hidden="true" />
-              <span>添加参考图 {{ references.length }} / 4</span>
-            </button>
           </div>
           <p v-if="mode === 'edit' && uploadError" class="field-error" role="alert">
             {{ uploadError }}
@@ -1134,7 +1746,12 @@ onBeforeUnmount(() => {
 
             <div class="quick-control">
               <span>清晰度</span>
-              <div class="resolution-toggle" role="radiogroup" aria-label="清晰度">
+              <div
+                class="resolution-toggle"
+                :class="{ 'is-2k': selectedResolution === '2K' }"
+                role="radiogroup"
+                aria-label="清晰度"
+              >
                 <button
                   v-for="option in resolutionOptions"
                   :key="option.value"
@@ -1273,7 +1890,12 @@ onBeforeUnmount(() => {
                 <ChevronDown :size="14" aria-hidden="true" />
               </label>
 
-              <div class="compact-resolution" role="radiogroup" aria-label="紧凑清晰度">
+              <div
+                class="compact-resolution"
+                :class="{ 'is-2k': selectedResolution === '2K' }"
+                role="radiogroup"
+                aria-label="紧凑清晰度"
+              >
                 <button
                   v-for="option in resolutionOptions"
                   :key="option.value"
@@ -1532,9 +2154,9 @@ onBeforeUnmount(() => {
 
 .prompt-card textarea {
   width: 100%;
-  min-height: 134px;
-  resize: vertical;
-  padding: 12px;
+  min-height: 44px;
+  resize: none;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   outline: 0;
@@ -1542,7 +2164,7 @@ onBeforeUnmount(() => {
   color: var(--ink);
   font: inherit;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.6;
   transition: border-color 180ms var(--ease-out);
 }
 
@@ -1555,26 +2177,183 @@ onBeforeUnmount(() => {
   color: var(--muted-soft);
 }
 
-.prompt-suggestions {
+.reference-actions {
   display: flex;
-  gap: 6px;
-  margin-top: 9px;
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
-.prompt-suggestions button {
-  min-height: 28px;
-  padding: 0 9px;
+.prompt-editor-shell {
+  position: relative;
+  display: flex;
+  min-height: 220px;
+  flex: 1 1 auto;
+}
+
+.prompt-editor-shell textarea {
+  flex: 1 1 auto;
+}
+
+.image-library {
+  position: absolute;
+  z-index: 30;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  height: min(260px, calc(100% - 16px));
+  max-height: none;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 22px 52px rgb(35 37 42 / 18%);
+  animation: image-library-in 180ms var(--ease-out) both;
+}
+
+.image-library__head {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 10px 0 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.image-library__head > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--action);
+}
+
+.image-library__head strong {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.image-library__head .icon-button {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+}
+
+.image-library__grid {
+  display: grid;
+  max-height: calc(100% - 44px);
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.image-library__item {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 5px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control-sm);
-  background: transparent;
+  border-radius: 12px;
+  background: var(--surface);
   color: var(--muted);
   cursor: pointer;
-  font-size: 10px;
+  text-align: left;
+  transition:
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    transform 120ms var(--ease-out);
 }
 
-.prompt-suggestions button:hover {
-  border-color: var(--line-strong);
+.image-library__item:hover:not(:disabled) {
+  border-color: var(--action);
+  background: var(--surface-hover);
+  transform: translateY(-1px);
+}
+
+.image-library__item:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.image-library__preview {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 8px;
+  aspect-ratio: 1;
+  background: var(--surface-muted);
+}
+
+.image-library__item > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 2px 3px;
+}
+
+.image-library__item strong {
+  overflow: hidden;
   color: var(--ink);
+  font-size: 9px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-library__item small {
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 7px;
+}
+
+.image-library__loading,
+.image-library__selected {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 4px;
+  border-radius: 50%;
+  background: rgb(20 21 24 / 72%);
+  color: #fff;
+}
+
+.image-library__state {
+  display: flex;
+  min-height: 94px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.image-library__state.is-error {
+  color: var(--warning);
+}
+
+@keyframes image-library-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reference-actions .reference-add {
+  width: 36px;
+  min-height: 36px;
+}
+
+.reference-file-input {
+  display: none;
 }
 
 .parameter-block {
@@ -2972,9 +3751,9 @@ onBeforeUnmount(() => {
 
 .prompt-card textarea {
   width: 100%;
-  min-height: 210px;
-  resize: vertical;
-  padding: 18px;
+  min-height: 44px;
+  resize: none;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-thumb);
   outline: 0;
@@ -2982,7 +3761,7 @@ onBeforeUnmount(() => {
   color: var(--ink);
   font: inherit;
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 1.6;
   transition:
     border-color 180ms var(--ease-out),
     box-shadow 180ms var(--ease-out),
@@ -2990,7 +3769,7 @@ onBeforeUnmount(() => {
 }
 
 .studio-page--creating .prompt-card textarea {
-  min-height: 142px;
+  min-height: 44px;
 }
 
 .prompt-card textarea:hover:not(:disabled) {
@@ -3007,37 +3786,15 @@ onBeforeUnmount(() => {
   color: var(--muted-soft);
 }
 
-.prompt-suggestions {
+.reference-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  justify-content: flex-end;
   margin-top: 10px;
 }
 
-.prompt-suggestions button {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control-sm);
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 10px;
-  transition:
-    border-color 160ms var(--ease-out),
-    background-color 160ms var(--ease-out),
-    color 160ms var(--ease-out),
-    transform 90ms ease-out;
-}
-
-.prompt-suggestions button:hover:not(:disabled) {
-  border-color: var(--line-strong);
-  background: var(--surface-hover);
-  color: var(--ink);
-}
-
-.prompt-suggestions button:active:not(:disabled) {
-  transform: scale(0.97);
+.reference-actions .reference-add {
+  width: 38px;
+  min-height: 38px;
 }
 
 .inline-references {
@@ -3063,6 +3820,22 @@ onBeforeUnmount(() => {
   object-fit: cover;
 }
 
+.reference-thumb small {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+  overflow: hidden;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgb(20 21 24 / 72%);
+  color: #fff;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .reference-thumb button {
   position: absolute;
   top: 4px;
@@ -3076,33 +3849,6 @@ onBeforeUnmount(() => {
   background: rgb(20 21 24 / 70%);
   color: #fff;
   cursor: pointer;
-}
-
-.reference-add {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-control-sm);
-  background: var(--surface-muted);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 10px;
-  transition:
-    border-color 160ms var(--ease-out),
-    color 160ms var(--ease-out),
-    transform 90ms ease-out;
-}
-
-.reference-add:hover:not(:disabled) {
-  border-color: var(--action);
-  color: var(--action);
-}
-
-.reference-add:active:not(:disabled) {
-  transform: scale(0.97);
 }
 
 .quick-settings {
@@ -4118,8 +4864,8 @@ onBeforeUnmount(() => {
 
   .prompt-card textarea,
   .studio-page--creating .prompt-card textarea {
-    min-height: 168px;
-    padding: 14px;
+    min-height: 44px;
+    padding: 10px 12px;
     font-size: 15px;
   }
 
@@ -4262,7 +5008,7 @@ onBeforeUnmount(() => {
 .prompt-action-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   margin-top: 16px;
 }
@@ -4624,13 +5370,13 @@ onBeforeUnmount(() => {
 }
 
 .canvas-frame {
-  height: clamp(340px, 54svh, 580px);
+  height: clamp(420px, 64svh, 700px);
   min-height: 0;
   flex: 0 0 auto;
 }
 
 .canvas-media {
-  width: min(100%, calc(clamp(260px, 44svh, 540px) * var(--canvas-aspect)));
+  width: min(100%, calc(clamp(320px, 56svh, 660px) * var(--canvas-aspect)));
 }
 
 @media (max-width: 900px) {
@@ -4652,11 +5398,11 @@ onBeforeUnmount(() => {
   }
 
   .canvas-frame {
-    height: clamp(280px, 44svh, 390px);
+    height: clamp(360px, 52svh, 460px);
   }
 
   .canvas-media {
-    width: min(100%, calc(clamp(210px, 32svh, 330px) * var(--canvas-aspect)));
+    width: min(100%, calc(clamp(240px, 40svh, 400px) * var(--canvas-aspect)));
   }
 
   .compact-editor {
@@ -4742,6 +5488,305 @@ onBeforeUnmount(() => {
   .generate-action.is-launching,
   .generate-action.is-launching::after {
     animation: none;
+  }
+}
+
+.mask-editor {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.mask-editor__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+
+.mask-editor__head > strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.mask-base-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.mask-base-picker select {
+  min-height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.mask-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.mask-tools button,
+.mask-size {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.mask-tools button.is-active {
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.mask-tools button:disabled,
+.mask-base-picker select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mask-size input[type='range'] {
+  width: 86px;
+  accent-color: var(--action);
+}
+
+.mask-editor__stage {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background:
+    linear-gradient(45deg, var(--canvas-grid) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--canvas-grid) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--canvas-grid) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--canvas-grid) 75%);
+  background-color: var(--canvas-bg);
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background-size: 12px 12px;
+}
+
+.mask-editor__stage img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  width: auto;
+  height: auto;
+}
+
+.mask-editor__stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.mask-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+@media (min-width: 901px) {
+  .studio-page--creating .studio-hero {
+    width: min(1240px, 100%);
+    gap: 10px;
+    margin: 0 auto 8px;
+  }
+
+  .studio-layout.is-creating {
+    width: min(1240px, 100%);
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-areas: 'stage editor';
+    align-items: start;
+  }
+}
+
+/* The composer and result share one surface: writing canvas, then image stage. */
+.studio-hero,
+.studio-toolbar,
+.studio-layout {
+  width: min(1040px, 100%);
+}
+
+.studio-layout:not(.is-creating) .control-rail {
+  gap: 0;
+}
+
+.studio-layout:not(.is-creating) .prompt-card {
+  display: flex;
+  min-height: clamp(520px, calc(100svh - 330px), 690px);
+  flex-direction: column;
+  padding: clamp(22px, 3vw, 34px);
+}
+
+.studio-layout:not(.is-creating) .card-heading {
+  margin-bottom: 12px;
+}
+
+.studio-layout:not(.is-creating) .prompt-card textarea {
+  min-height: 220px;
+  flex: 1 1 auto;
+  padding: 20px 22px;
+  font-size: 18px;
+  line-height: 1.75;
+}
+
+.studio-layout:not(.is-creating) .reference-actions {
+  margin-top: 12px;
+}
+
+.studio-layout:not(.is-creating) .quick-settings {
+  margin-top: 24px;
+}
+
+.studio-layout.is-creating {
+  width: min(1240px, 100%);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'stage'
+    'editor';
+  align-items: stretch;
+  gap: 12px;
+}
+
+.studio-layout.is-creating .workspace,
+.studio-layout.is-creating .control-rail {
+  width: 100%;
+}
+
+.studio-layout.is-creating .canvas-frame {
+  height: clamp(460px, 62svh, 720px);
+  min-height: 0;
+}
+
+.studio-layout.is-creating .canvas-media {
+  width: min(100%, calc(clamp(360px, 58svh, 680px) * var(--canvas-aspect)));
+}
+
+.studio-layout.is-creating .compact-editor {
+  width: 100%;
+}
+
+.image-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+}
+
+@media (max-width: 620px) {
+  .studio-layout:not(.is-creating) .prompt-card {
+    min-height: 540px;
+    padding: 18px;
+  }
+
+  .studio-layout:not(.is-creating) .prompt-card textarea {
+    min-height: 220px;
+    padding: 16px;
+    font-size: 16px;
+  }
+
+  .studio-layout.is-creating .canvas-frame {
+    height: clamp(360px, 54svh, 520px);
+  }
+
+  .studio-layout.is-creating .compact-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .studio-layout.is-creating .compact-actions {
+    justify-content: space-between;
+  }
+
+  .image-library {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .image-library__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.resolution-toggle,
+.compact-resolution {
+  position: relative;
+  isolation: isolate;
+}
+
+.resolution-toggle::before,
+.compact-resolution::before {
+  position: absolute;
+  z-index: 0;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  content: '';
+  pointer-events: none;
+  transition: transform 260ms var(--ease-out);
+}
+
+.resolution-toggle::before {
+  width: calc(50% - 5px);
+}
+
+.resolution-toggle.is-2k::before {
+  transform: translateX(calc(100% + 4px));
+}
+
+.compact-resolution::before {
+  width: calc(50% - 4px);
+}
+
+.compact-resolution.is-2k::before {
+  transform: translateX(calc(100% + 2px));
+}
+
+.resolution-toggle button,
+.compact-resolution button {
+  position: relative;
+  z-index: 1;
+}
+
+.resolution-toggle button.is-selected,
+.compact-resolution button.is-selected {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resolution-toggle::before,
+  .compact-resolution::before {
+    transition: none;
   }
 }
 </style>

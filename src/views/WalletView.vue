@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   ArrowUpRight,
   BadgeCheck,
@@ -29,15 +29,30 @@ interface WalletResponse {
   reservedCredits: number
   availableCredits: number
   ledger: LedgerEntry[]
+  nextCursor: number | null
 }
 
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
 const queryClient = useQueryClient()
 const { data: settings } = usePublicSettings()
-const { data: wallet, isLoading, isError, refetch } = useQuery({
+const {
+  data: walletPages,
+  isLoading,
+  isError,
+  refetch,
+  fetchNextPage,
+  hasNextPage,
+  isFetchingNextPage,
+} = useInfiniteQuery({
   queryKey: ['wallet'],
-  queryFn: () => apiRequest<WalletResponse>('/api/wallet'),
+  queryFn: ({ pageParam }) => {
+    const params = new URLSearchParams({ limit: '20' })
+    if (pageParam) params.set('cursor', String(pageParam))
+    return apiRequest<WalletResponse>(`/api/wallet?${params.toString()}`)
+  },
+  initialPageParam: null as number | null,
+  getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
 })
 const {
   data: checkin,
@@ -53,6 +68,10 @@ const redeeming = ref(false)
 const checkinError = ref('')
 const checkingIn = ref(false)
 
+const wallet = computed(() => walletPages.value?.pages[0] ?? null)
+const ledger = computed(
+  () => walletPages.value?.pages.flatMap((page) => page.ledger) ?? [],
+)
 const balance = computed(() => wallet.value?.availableCredits ?? auth.user?.availableCredits ?? 0)
 const reserved = computed(() => wallet.value?.reservedCredits ?? auth.user?.reservedCredits ?? 0)
 
@@ -137,7 +156,7 @@ async function claimCheckin() {
       </div>
       <a v-if="settings" class="button button--secondary" :href="settings.purchaseLink" target="_blank" rel="noopener noreferrer">
         <CreditCard :size="17" aria-hidden="true" />
-        前往购买
+        前往购买积分
         <ArrowUpRight :size="15" aria-hidden="true" />
       </a>
     </header>
@@ -217,15 +236,6 @@ async function claimCheckin() {
         </form>
         <div class="purchase-note">
           <span>购买后将卡密带回本站兑换</span>
-          <a
-            v-if="settings"
-            :href="settings.purchaseLink"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            打开站外购买页
-            <ArrowUpRight :size="14" aria-hidden="true" />
-          </a>
         </div>
       </section>
     </div>
@@ -236,7 +246,7 @@ async function claimCheckin() {
           <Coins :size="19" aria-hidden="true" />
           <h2>积分流水</h2>
         </div>
-        <span>最近 30 条</span>
+        <span>已加载 {{ ledger.length }} 条</span>
       </div>
 
       <div v-if="isLoading" class="state-block">
@@ -247,13 +257,13 @@ async function claimCheckin() {
         <span>积分流水暂时无法读取。</span>
         <button type="button" class="text-button" @click="() => refetch()">重试</button>
       </div>
-      <div v-else-if="!wallet?.ledger.length" class="state-block state-block--empty">
+      <div v-else-if="!ledger.length" class="state-block state-block--empty">
         <Clock3 :size="24" :stroke-width="1.5" aria-hidden="true" />
         <strong>还没有积分变化</strong>
         <span>兑换第一张卡密后，余额变化会显示在这里。</span>
       </div>
       <div v-else class="ledger-list">
-        <div v-for="entry in wallet.ledger" :key="entry.id" class="ledger-row">
+        <div v-for="entry in ledger" :key="entry.id" class="ledger-row">
           <span class="ledger-icon" :class="{ 'is-negative': entry.delta < 0 }">
             <Coins :size="15" aria-hidden="true" />
           </span>
@@ -265,6 +275,17 @@ async function claimCheckin() {
             {{ entry.delta > 0 ? '+' : '' }}{{ entry.delta }}
           </span>
           <span class="ledger-balance">余额 {{ entry.balanceAfter }}</span>
+        </div>
+        <div v-if="hasNextPage" class="ledger-more">
+          <button
+            type="button"
+            class="button button--secondary button--small"
+            :disabled="isFetchingNextPage"
+            @click="fetchNextPage()"
+          >
+            <LoaderCircle v-if="isFetchingNextPage" class="spin" :size="15" aria-hidden="true" />
+            {{ isFetchingNextPage ? '正在加载' : '加载更多流水' }}
+          </button>
         </div>
       </div>
     </section>
@@ -411,14 +432,6 @@ async function claimCheckin() {
   font-size: 10px;
 }
 
-.purchase-note a {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--action);
-  text-decoration: none;
-}
-
 .ledger-card {
   overflow: hidden;
 }
@@ -445,6 +458,26 @@ async function claimCheckin() {
 
 .ledger-row:last-child {
   border-bottom: 0;
+}
+
+.ledger-row {
+  animation: ledger-row-in 240ms var(--ease-out) both;
+}
+
+.ledger-row:nth-child(2) {
+  animation-delay: 25ms;
+}
+
+.ledger-row:nth-child(3) {
+  animation-delay: 50ms;
+}
+
+.ledger-row:nth-child(4) {
+  animation-delay: 75ms;
+}
+
+.ledger-row:nth-child(n + 5) {
+  animation-delay: 100ms;
 }
 
 .ledger-icon {
@@ -513,8 +546,26 @@ async function claimCheckin() {
   font-size: 10px;
 }
 
+.ledger-more {
+  display: flex;
+  justify-content: center;
+  padding: 14px;
+  border-top: 1px solid var(--line);
+}
+
 .spin {
   animation: spin 800ms linear infinite;
+}
+
+@keyframes ledger-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes spin {

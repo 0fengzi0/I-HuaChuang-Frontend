@@ -23,6 +23,19 @@ const demoPricing = {
 
 let demoCredits = 32
 let demoCheckinClaimed = false
+let demoSignupGrantCredits = 5
+let demoDailyGrantCredits = 2
+let demoEmailVerification = false
+const demoEmailSMTP = {
+  host: 'smtp.example.com',
+  port: 587,
+  security: 'starttls' as const,
+  username: 'mailer@example.com',
+  passwordMasked: '********',
+  fromName: 'I画创',
+  fromEmail: 'mailer@example.com',
+  configured: true,
+}
 let demoUser: User = {
   id: 'demo-user',
   username: 'I画创体验用户',
@@ -256,9 +269,9 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
       retentionDays: 7,
       pricing: demoPricing,
       generationReady: true,
-      emailVerification: false,
-      dailyGrantCredits: 2,
-      signupGrantCredits: 5,
+      emailVerification: demoEmailVerification,
+      dailyGrantCredits: demoDailyGrantCredits,
+      signupGrantCredits: demoSignupGrantCredits,
       generatedAt: new Date().toISOString(),
     } as T
   }
@@ -279,6 +292,24 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
 
   if (url.pathname === '/api/generations' && method === 'POST') {
     return createGeneration(init) as T
+  }
+
+  if (url.pathname === '/api/reference-assets' && method === 'GET') {
+    const items = demoGenerations.flatMap((generation) =>
+      generation.outputs
+        .filter((output) => output.asset)
+        .map((output) => ({
+          id: output.asset!.id,
+          generationId: generation.id,
+          width: output.asset!.width,
+          height: output.asset!.height,
+          mimeType: output.asset!.mimeType,
+          expiresAt: output.asset!.expiresAt,
+          createdAt: generation.createdAt,
+          hasThumbnail: output.asset!.hasThumbnail,
+        })),
+    )
+    return { items } as T
   }
 
   if (segments[1] === 'generations' && segments[2]) {
@@ -347,19 +378,19 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
       } as unknown as T
     }
     demoCheckinClaimed = true
-    demoCredits += 2
+    demoCredits += demoDailyGrantCredits
     return {
-      credits: 2,
+      credits: demoDailyGrantCredits,
       balance: demoCredits,
       period: new Date().toISOString().slice(0, 10),
       claimedAt: new Date().toISOString(),
-      message: '签到成功，获得 2 积分。',
+      message: `签到成功，获得 ${demoDailyGrantCredits} 积分。`,
     } as T
   }
 
   if (url.pathname === '/api/wallet/checkin') {
     return {
-      dailyCredits: 2,
+      dailyCredits: demoDailyGrantCredits,
       canClaim: !demoCheckinClaimed,
       claimedToday: demoCheckinClaimed,
       period: new Date().toISOString().slice(0, 10),
@@ -429,7 +460,31 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
       pricing: demoPricing,
       retentionDays: 7,
       purchaseLink: 'https://www.ldxp.cn',
+      signupGrantCredits: demoSignupGrantCredits,
+      dailyGrantCredits: demoDailyGrantCredits,
+      emailVerification: demoEmailVerification,
+      emailSMTP: demoEmailSMTP,
     } as T
+  }
+
+  if (url.pathname === '/api/admin/settings/credit-rewards' && method === 'PUT') {
+    const body = parseRequestBody(init)
+    demoSignupGrantCredits = Number(body.signupGrantCredits) || 0
+    demoDailyGrantCredits = Number(body.dailyGrantCredits) || 0
+    return {
+      signupGrantCredits: demoSignupGrantCredits,
+      dailyGrantCredits: demoDailyGrantCredits,
+    } as T
+  }
+
+  if (url.pathname === '/api/admin/settings/email-verification' && method === 'PUT') {
+    const body = parseRequestBody(init)
+    demoEmailVerification = Boolean(body.enabled)
+    return { emailVerification: demoEmailVerification, emailSMTP: demoEmailSMTP } as T
+  }
+
+  if (url.pathname === '/api/admin/settings/email-verification/test' && method === 'POST') {
+    return { message: '测试邮件已发送。', recipient: 'demo@ihuachuang.local' } as T
   }
 
   if (url.pathname === '/api/admin/settings/provider') {

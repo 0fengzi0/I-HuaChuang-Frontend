@@ -8,9 +8,11 @@ const props = withDefaults(
     assetId: string
     alt: string
     thumbnail?: boolean
+    kind?: 'asset' | 'reference'
   }>(),
   {
     thumbnail: false,
+    kind: 'asset',
   },
 )
 
@@ -33,8 +35,12 @@ async function load() {
   loading.value = true
   failed.value = false
   try {
+    const basePath =
+      props.kind === 'reference'
+        ? `/api/reference-assets/${encodeURIComponent(props.assetId)}/download`
+        : `/api/assets/${encodeURIComponent(props.assetId)}/download`
     const blob = await apiBlob(
-      `/api/assets/${encodeURIComponent(props.assetId)}/download?inline=true${props.thumbnail ? '&thumbnail=true' : ''}`,
+      `${basePath}?inline=true${props.thumbnail ? '&thumbnail=true' : ''}`,
       { signal: controller.signal },
     )
     source.value = URL.createObjectURL(blob)
@@ -48,7 +54,7 @@ async function load() {
 }
 
 watch(
-  () => [props.assetId, props.thumbnail],
+  () => [props.assetId, props.thumbnail, props.kind],
   () => void load(),
   { immediate: true },
 )

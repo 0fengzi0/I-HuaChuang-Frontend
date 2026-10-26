@@ -26,9 +26,6 @@ defineProps<{
         <span>{{ eyebrow }}</span>
         <h1>{{ title }}</h1>
         <p>更新日期：{{ updated }}</p>
-        <div class="legal-placeholder">
-          本页为上线前基础占位版本。正式发布前需补充运营主体、联系地址、客服邮箱与争议解决信息。
-        </div>
       </aside>
       <article class="legal-content">
         <slot />
@@ -100,17 +97,6 @@ defineProps<{
   font-size: 10px;
 }
 
-.legal-placeholder {
-  margin-top: 32px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-thumb);
-  background: var(--surface-muted);
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.7;
-}
-
 .legal-content {
   padding: clamp(24px, 4vw, 40px);
   border: 1px solid var(--line);
@@ -157,8 +143,5 @@ defineProps<{
     position: static;
   }
 
-  .legal-placeholder {
-    margin-top: 18px;
-  }
 }
 </style>

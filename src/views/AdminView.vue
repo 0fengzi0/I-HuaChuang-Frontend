@@ -3,13 +3,16 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   BarChart3,
+  CalendarCheck2,
   Check,
   Clipboard,
   Coins,
   CreditCard,
   Download,
+  Gift,
   KeyRound,
   LoaderCircle,
+  MailCheck,
   Save,
   ScrollText,
   ServerCog,
@@ -19,7 +22,8 @@ import {
   Users,
   X,
 } from 'lucide-vue-next'
-import { APIError, apiRequest, type User } from '../api/client'
+import PaginationControls from '../components/PaginationControls.vue'
+import { APIError, apiBlob, apiRequest, type User } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationsStore } from '../stores/notifications'
 
@@ -48,13 +52,28 @@ interface Batch {
   quantity: number
   expiresAt: string | null
   createdAt: string
+  available: number
   redeemed: number
+  revoked: number
 }
 
 interface AdminSettings {
   pricing: Record<'1K' | '2K', number>
   retentionDays: number
   purchaseLink: string
+  signupGrantCredits: number
+  dailyGrantCredits: number
+  emailVerification: boolean
+  emailSMTP: {
+    host: string
+    port: number
+    security: 'starttls' | 'tls'
+    username: string
+    passwordMasked: string
+    fromName: string
+    fromEmail: string
+    configured: boolean
+  }
 }
 
 interface ProviderSetting {
@@ -69,11 +88,20 @@ interface ProviderSetting {
 }
 
 type Tab = 'overview' | 'users' | 'cards' | 'settings' | 'audit'
+type PaginatedUsers = { users: User[]; nextOffset: number | null }
+type PaginatedBatches = { batches: Batch[]; nextOffset: number | null }
+type PaginatedAuditLogs = { logs: AuditLog[]; nextOffset: number | null }
 
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
 const queryClient = useQueryClient()
 const activeTab = ref<Tab>('overview')
+const usersPage = ref(1)
+const batchesPage = ref(1)
+const auditPage = ref(1)
+const usersPageSize = 20
+const batchesPageSize = 20
+const auditPageSize = 30
 const tabs = [
   { value: 'overview' as const, label: '概览', icon: BarChart3 },
   { value: 'users' as const, label: '用户', icon: Users },
@@ -86,13 +114,19 @@ const { data: overview, isLoading: overviewLoading } = useQuery({
   queryKey: ['admin-overview'],
   queryFn: () => apiRequest<Overview>('/api/admin/stats/overview'),
 })
-const { data: usersData, isLoading: usersLoading } = useQuery({
-  queryKey: ['admin-users'],
-  queryFn: () => apiRequest<{ users: User[] }>('/api/admin/users?limit=50'),
+const { data: usersData, isLoading: usersLoading, isFetching: usersFetching } = useQuery({
+  queryKey: ['admin-users', usersPage],
+  queryFn: () =>
+    apiRequest<PaginatedUsers>(
+      `/api/admin/users?limit=${usersPageSize}&offset=${(usersPage.value - 1) * usersPageSize}`,
+    ),
 })
-const { data: batchesData } = useQuery({
-  queryKey: ['admin-card-batches'],
-  queryFn: () => apiRequest<{ batches: Batch[] }>('/api/admin/card-key-batches'),
+const { data: batchesData, isFetching: batchesFetching } = useQuery({
+  queryKey: ['admin-card-batches', batchesPage],
+  queryFn: () =>
+    apiRequest<PaginatedBatches>(
+      `/api/admin/card-key-batches?limit=${batchesPageSize}&offset=${(batchesPage.value - 1) * batchesPageSize}`,
+    ),
 })
 const { data: settingsData } = useQuery({
   queryKey: ['admin-settings'],
@@ -102,9 +136,12 @@ const { data: provider } = useQuery({
   queryKey: ['admin-provider'],
   queryFn: () => apiRequest<ProviderSetting>('/api/admin/settings/provider'),
 })
-const { data: auditData, isLoading: auditLoading } = useQuery({
-  queryKey: ['admin-audit-logs'],
-  queryFn: () => apiRequest<{ logs: AuditLog[] }>('/api/admin/audit-logs?limit=80'),
+const { data: auditData, isLoading: auditLoading, isFetching: auditFetching } = useQuery({
+  queryKey: ['admin-audit-logs', auditPage],
+  queryFn: () =>
+    apiRequest<PaginatedAuditLogs>(
+      `/api/admin/audit-logs?limit=${auditPageSize}&offset=${(auditPage.value - 1) * auditPageSize}`,
+    ),
   enabled: computed(() => activeTab.value === 'audit'),
 })
 
@@ -118,6 +155,7 @@ const batchCreating = ref(false)
 const batchError = ref('')
 const generatedCodes = ref<string[]>([])
 const copied = ref(false)
+const downloadingBatchID = ref('')
 
 const settingsForm = reactive({
   pricing: {
@@ -126,9 +164,29 @@ const settingsForm = reactive({
   },
   retentionDays: 7,
   purchaseLink: 'https://www.ldxp.cn',
+  signupGrantCredits: 0,
+  dailyGrantCredits: 0,
+  emailVerification: false,
+  emailSMTP: {
+    host: '',
+    port: 587,
+    security: 'starttls' as 'starttls' | 'tls',
+    username: '',
+    password: '',
+    fromName: '',
+    fromEmail: '',
+  },
 })
 const settingsSaving = ref(false)
 const settingsError = ref('')
+const emailVerificationSaving = ref(false)
+const emailVerificationError = ref('')
+const emailSMTPConfigured = ref(false)
+const emailSMTPPasswordMasked = ref('')
+const emailTestRecipient = ref('')
+const emailTesting = ref(false)
+const emailTestMessage = ref('')
+const emailTestError = ref('')
 
 const adjustUser = ref<User | null>(null)
 const adjustment = reactive({ delta: 0, reason: '' })
@@ -200,6 +258,17 @@ watch(
     settingsForm.pricing['2K'] = value.pricing['2K'] ?? 2
     settingsForm.retentionDays = value.retentionDays
     settingsForm.purchaseLink = value.purchaseLink
+    settingsForm.signupGrantCredits = value.signupGrantCredits
+    settingsForm.dailyGrantCredits = value.dailyGrantCredits
+    settingsForm.emailVerification = value.emailVerification
+    settingsForm.emailSMTP.host = value.emailSMTP?.host ?? ''
+    settingsForm.emailSMTP.port = value.emailSMTP?.port ?? 587
+    settingsForm.emailSMTP.security = value.emailSMTP?.security ?? 'starttls'
+    settingsForm.emailSMTP.username = value.emailSMTP?.username ?? ''
+    settingsForm.emailSMTP.fromName = value.emailSMTP?.fromName ?? ''
+    settingsForm.emailSMTP.fromEmail = value.emailSMTP?.fromEmail ?? ''
+    emailSMTPPasswordMasked.value = value.emailSMTP?.passwordMasked ?? ''
+    emailSMTPConfigured.value = value.emailSMTP?.configured ?? false
   },
   { immediate: true },
 )
@@ -241,7 +310,7 @@ async function createBatch() {
     generatedCodes.value = response.codes
     batchForm.name = ''
     await queryClient.invalidateQueries({ queryKey: ['admin-card-batches'] })
-    notifications.push('卡密批次已生成，请立即保存完整卡密。', 'success')
+    notifications.push('卡密批次已生成，可复制或下载清单。', 'success')
   } catch (error) {
     batchError.value = error instanceof APIError ? error.message : '暂时无法生成卡密批次。'
   } finally {
@@ -268,6 +337,29 @@ function downloadCodes() {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+async function downloadBatch(batch: Batch) {
+  downloadingBatchID.value = batch.id
+  try {
+    const blob = await apiBlob(
+      `/api/admin/card-key-batches/${encodeURIComponent(batch.id)}/export`,
+    )
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `ihuachuang-card-keys-${batch.id.slice(0, 8)}.csv`
+    anchor.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    notifications.push('卡密清单已下载。', 'success')
+  } catch (error) {
+    notifications.push(
+      error instanceof APIError ? error.message : '卡密清单暂时无法下载。',
+      'warning',
+    )
+  } finally {
+    downloadingBatchID.value = ''
+  }
+}
+
 async function saveSettings() {
   settingsError.value = ''
   settingsSaving.value = true
@@ -284,12 +376,96 @@ async function saveSettings() {
       method: 'PUT',
       body: JSON.stringify({ url: settingsForm.purchaseLink }),
     })
-    await queryClient.invalidateQueries({ queryKey: ['admin-settings'] })
+    await apiRequest('/api/admin/settings/credit-rewards', {
+      method: 'PUT',
+      body: JSON.stringify({
+        signupGrantCredits: Number(settingsForm.signupGrantCredits),
+        dailyGrantCredits: Number(settingsForm.dailyGrantCredits),
+      }),
+    })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['admin-settings'] }),
+      queryClient.invalidateQueries({ queryKey: ['public-settings'] }),
+      queryClient.invalidateQueries({ queryKey: ['wallet', 'checkin'] }),
+    ])
     notifications.push('系统设置已保存。', 'success')
   } catch (error) {
     settingsError.value = error instanceof APIError ? error.message : '暂时无法保存系统设置。'
   } finally {
     settingsSaving.value = false
+  }
+}
+
+async function saveEmailVerification() {
+  emailVerificationError.value = ''
+  emailVerificationSaving.value = true
+  try {
+    await apiRequest('/api/admin/settings/email-verification', {
+      method: 'PUT',
+      body: JSON.stringify({
+        enabled: settingsForm.emailVerification,
+        smtp: {
+          host: settingsForm.emailSMTP.host,
+          port: Number(settingsForm.emailSMTP.port),
+          security: settingsForm.emailSMTP.security,
+          username: settingsForm.emailSMTP.username,
+          password: settingsForm.emailSMTP.password,
+          fromName: settingsForm.emailSMTP.fromName,
+          fromEmail: settingsForm.emailSMTP.fromEmail,
+        },
+      }),
+    })
+    settingsForm.emailSMTP.password = ''
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['admin-settings'] }),
+      queryClient.invalidateQueries({ queryKey: ['public-settings'] }),
+    ])
+    notifications.push('邮箱验证设置已保存。', 'success')
+  } catch (error) {
+    emailVerificationError.value =
+      error instanceof APIError ? error.message : '暂时无法保存邮箱验证设置。'
+  } finally {
+    emailVerificationSaving.value = false
+  }
+}
+
+async function testEmailSMTP() {
+  emailTestError.value = ''
+  emailTestMessage.value = ''
+  const recipient =
+    emailTestRecipient.value.trim() ||
+    auth.user?.email ||
+    settingsForm.emailSMTP.fromEmail
+  if (!recipient) {
+    emailTestError.value = '请填写测试收件邮箱。'
+    return
+  }
+  emailTesting.value = true
+  try {
+    const response = await apiRequest<{ message: string }>(
+      '/api/admin/settings/email-verification/test',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          recipient,
+          smtp: {
+            host: settingsForm.emailSMTP.host,
+            port: Number(settingsForm.emailSMTP.port),
+            security: settingsForm.emailSMTP.security,
+            username: settingsForm.emailSMTP.username,
+            password: settingsForm.emailSMTP.password,
+            fromName: settingsForm.emailSMTP.fromName,
+            fromEmail: settingsForm.emailSMTP.fromEmail,
+          },
+        }),
+      },
+    )
+    emailTestMessage.value = response.message || '测试邮件已发送。'
+  } catch (error) {
+    emailTestError.value =
+      error instanceof APIError ? error.message : 'SMTP 测试暂时无法完成。'
+  } finally {
+    emailTesting.value = false
   }
 }
 
@@ -461,10 +637,12 @@ function auditLabel(action: string) {
     provider_updated: '更新中转站',
     provider_tested: '测试中转站',
     card_batch_created: '创建卡密批次',
+    card_batch_exported: '导出卡密批次',
     card_revoked: '作废卡密',
     pricing_updated: '更新价格',
     retention_updated: '更新保留期',
     purchase_link_updated: '更新购买链接',
+    email_verification_updated: '更新邮箱验证',
     credit_adjustment: '调整积分',
     user_status_updated: '更新账户状态',
     password_reset_token_created: '生成重置口令',
@@ -587,7 +765,7 @@ function auditLabel(action: string) {
               <Users :size="19" aria-hidden="true" />
               <h2>用户与额度</h2>
             </div>
-            <span>{{ usersData?.users.length ?? 0 }} 个账户</span>
+            <span>本页 {{ usersData?.users.length ?? 0 }} 个账户</span>
           </div>
           <div v-if="usersLoading" class="state-block">
             <LoaderCircle class="spin" :size="20" aria-hidden="true" />
@@ -628,6 +806,13 @@ function auditLabel(action: string) {
               </span>
             </div>
           </div>
+          <PaginationControls
+            :page="usersPage"
+            :has-next="Boolean(usersData?.nextOffset)"
+            :loading="usersFetching"
+            @previous="usersPage = Math.max(1, usersPage - 1)"
+            @next="usersPage += 1"
+          />
         </article>
       </section>
 
@@ -638,7 +823,7 @@ function auditLabel(action: string) {
               <Ticket :size="19" aria-hidden="true" />
               <h2>创建卡密批次</h2>
             </div>
-            <span>完整卡密只显示一次</span>
+            <span>生成后可随时下载清单</span>
           </div>
           <form class="batch-form" @submit.prevent="createBatch">
             <label class="field field--full">
@@ -707,7 +892,7 @@ function auditLabel(action: string) {
               <CreditCard :size="19" aria-hidden="true" />
               <h2>最近批次</h2>
             </div>
-            <span>{{ batchesData?.batches.length ?? 0 }} 个批次</span>
+            <span>本页 {{ batchesData?.batches.length ?? 0 }} 个批次</span>
           </div>
           <div class="batch-list">
             <div v-for="batch in batchesData?.batches" :key="batch.id" class="batch-row">
@@ -716,13 +901,35 @@ function auditLabel(action: string) {
                 <span>创建于 {{ formatDate(batch.createdAt) }}</span>
               </div>
               <span>{{ batch.creditsPerKey }} 积分 × {{ batch.quantity }}</span>
-              <span>{{ batch.redeemed }} / {{ batch.quantity }} 已兑换</span>
+              <span>{{ batch.available }} 未用 · {{ batch.redeemed }} 已兑换</span>
               <span>{{ formatDate(batch.expiresAt) }}</span>
+              <button
+                type="button"
+                class="button button--secondary button--small"
+                :disabled="downloadingBatchID === batch.id"
+                @click="downloadBatch(batch)"
+              >
+                <LoaderCircle
+                  v-if="downloadingBatchID === batch.id"
+                  class="spin"
+                  :size="15"
+                  aria-hidden="true"
+                />
+                <Download v-else :size="15" aria-hidden="true" />
+                {{ downloadingBatchID === batch.id ? '正在下载' : '下载清单' }}
+              </button>
             </div>
             <div v-if="!batchesData?.batches.length" class="mini-empty">
               <span>还没有卡密批次。</span>
             </div>
           </div>
+          <PaginationControls
+            :page="batchesPage"
+            :has-next="Boolean(batchesData?.nextOffset)"
+            :loading="batchesFetching"
+            @previous="batchesPage = Math.max(1, batchesPage - 1)"
+            @next="batchesPage += 1"
+          />
         </article>
       </section>
 
@@ -757,6 +964,42 @@ function auditLabel(action: string) {
                 <span>卡密购买链接</span>
                 <input v-model="settingsForm.purchaseLink" type="url" />
               </label>
+            </div>
+            <div class="reward-settings">
+              <div class="reward-settings__heading">
+                <div>
+                  <Gift :size="17" aria-hidden="true" />
+                  <strong>积分奖励</strong>
+                </div>
+                <span>保存后立即生效</span>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>注册奖励</span>
+                  <input
+                    v-model.number="settingsForm.signupGrantCredits"
+                    type="number"
+                    min="0"
+                    max="100000"
+                    step="1"
+                  />
+                  <small>新账户首次注册时发放，0 表示关闭。</small>
+                </label>
+                <label class="field">
+                  <span>每日签到</span>
+                  <input
+                    v-model.number="settingsForm.dailyGrantCredits"
+                    type="number"
+                    min="0"
+                    max="100000"
+                    step="1"
+                  />
+                  <small>
+                    <CalendarCheck2 :size="13" aria-hidden="true" />
+                    每个 UTC 自然日可领取一次，0 表示关闭。
+                  </small>
+                </label>
+              </div>
             </div>
             <div v-if="settingsError" class="inline-alert inline-alert--error" role="alert">
               {{ settingsError }}
@@ -844,6 +1087,171 @@ function auditLabel(action: string) {
             API Key 只在服务端以 AES-GCM 加密保存。连接测试仅读取模型列表，不产生计费图片。
           </p>
         </article>
+
+        <article class="admin-panel email-settings-card">
+          <div class="panel-heading">
+            <div>
+              <MailCheck :size="19" aria-hidden="true" />
+              <h2>邮箱验证</h2>
+            </div>
+            <span :class="{ 'email-setting-ready': settingsForm.emailVerification }">
+              {{
+                settingsForm.emailVerification
+                  ? '已启用'
+                  : emailSMTPConfigured
+                    ? '已配置，未启用'
+                    : '已关闭'
+              }}
+            </span>
+          </div>
+          <form class="email-settings-form" @submit.prevent="saveEmailVerification">
+            <label class="setting-toggle">
+              <span class="setting-toggle__icon">
+                <MailCheck :size="17" aria-hidden="true" />
+              </span>
+              <span class="setting-toggle__copy">
+                <strong>启用邮箱验证</strong>
+                <small>控制站点公开的邮箱验证状态，保存后立即生效。</small>
+              </span>
+              <input v-model="settingsForm.emailVerification" type="checkbox" />
+              <span class="setting-toggle__state">
+                {{ settingsForm.emailVerification ? '已启用' : '已关闭' }}
+              </span>
+            </label>
+            <div class="email-smtp-grid">
+              <label class="field email-smtp-host">
+                <span>SMTP 主机</span>
+                <input
+                  v-model.trim="settingsForm.emailSMTP.host"
+                  type="text"
+                  placeholder="smtp.example.com"
+                  autocomplete="url"
+                />
+              </label>
+              <label class="field">
+                <span>端口</span>
+                <input
+                  v-model.number="settingsForm.emailSMTP.port"
+                  type="number"
+                  min="1"
+                  max="65535"
+                  inputmode="numeric"
+                />
+              </label>
+              <label class="field">
+                <span>连接方式</span>
+                <select v-model="settingsForm.emailSMTP.security">
+                  <option value="starttls">STARTTLS · 常用 587</option>
+                  <option value="tls">SSL/TLS · 常用 465</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>SMTP 用户名</span>
+                <input
+                  v-model.trim="settingsForm.emailSMTP.username"
+                  type="text"
+                  placeholder="mailer@example.com"
+                  autocomplete="username"
+                />
+              </label>
+              <label class="field">
+                <span>SMTP 密码</span>
+                <input
+                  v-model="settingsForm.emailSMTP.password"
+                  type="password"
+                  :placeholder="
+                    emailSMTPPasswordMasked
+                      ? '已保存，留空不修改'
+                      : '输入 SMTP 密码或授权码'
+                  "
+                  autocomplete="new-password"
+                />
+              </label>
+              <label class="field">
+                <span>发件人名称</span>
+                <input
+                  v-model.trim="settingsForm.emailSMTP.fromName"
+                  type="text"
+                  placeholder="I画创"
+                />
+              </label>
+              <label class="field email-smtp-from">
+                <span>发件邮箱</span>
+                <input
+                  v-model.trim="settingsForm.emailSMTP.fromEmail"
+                  type="email"
+                  placeholder="noreply@example.com"
+                  autocomplete="email"
+                />
+              </label>
+            </div>
+            <p class="settings-note">
+              SMTP 密码使用 AES-GCM 加密保存。连接测试会真实发送一封测试邮件。
+            </p>
+            <div class="email-test-panel">
+              <label class="field">
+                <span>测试收件邮箱</span>
+                <input
+                  v-model.trim="emailTestRecipient"
+                  type="email"
+                  :placeholder="auth.user?.email || 'name@example.com'"
+                  autocomplete="email"
+                />
+              </label>
+              <button
+                class="button button--secondary"
+                type="button"
+                :disabled="emailTesting"
+                @click="testEmailSMTP"
+              >
+                <LoaderCircle
+                  v-if="emailTesting"
+                  class="spin"
+                  :size="16"
+                  aria-hidden="true"
+                />
+                <MailCheck v-else :size="16" aria-hidden="true" />
+                {{ emailTesting ? '正在发送' : '发送测试邮件' }}
+              </button>
+            </div>
+            <div
+              v-if="emailTestMessage"
+              class="inline-alert inline-alert--success"
+              role="status"
+            >
+              {{ emailTestMessage }}
+            </div>
+            <div v-if="emailTestError" class="inline-alert inline-alert--error" role="alert">
+              {{ emailTestError }}
+            </div>
+            <div
+              v-if="emailVerificationError"
+              class="inline-alert inline-alert--error"
+              role="alert"
+            >
+              {{ emailVerificationError }}
+            </div>
+            <div class="email-settings-actions">
+              <span class="email-settings-state">
+                {{ emailSMTPConfigured ? 'SMTP 配置已保存' : 'SMTP 尚未完成配置' }}
+              </span>
+              <button
+                class="button button--primary"
+                type="submit"
+                :disabled="emailVerificationSaving"
+              >
+                <LoaderCircle
+                  v-if="emailVerificationSaving"
+                  class="spin"
+                  :size="16"
+                  aria-hidden="true"
+                />
+                <Save v-else :size="16" aria-hidden="true" />
+                {{ emailVerificationSaving ? '正在保存' : '保存邮箱验证' }}
+              </button>
+            </div>
+          </form>
+        </article>
       </section>
 
       <section v-else class="admin-content">
@@ -853,7 +1261,7 @@ function auditLabel(action: string) {
               <ScrollText :size="19" aria-hidden="true" />
               <h2>管理员审计日志</h2>
             </div>
-            <span>最近 80 条</span>
+            <span>每页 30 条</span>
           </div>
           <div v-if="auditLoading" class="state-block">
             <LoaderCircle class="spin" :size="20" aria-hidden="true" />
@@ -875,6 +1283,13 @@ function auditLabel(action: string) {
           <div v-else class="mini-empty">
             <span>还没有管理员动作记录。</span>
           </div>
+          <PaginationControls
+            :page="auditPage"
+            :has-next="Boolean(auditData?.nextOffset)"
+            :loading="auditFetching"
+            @previous="auditPage = Math.max(1, auditPage - 1)"
+            @next="auditPage += 1"
+          />
         </article>
       </section>
     </div>
@@ -1015,6 +1430,40 @@ function auditLabel(action: string) {
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
   background: var(--surface);
+}
+
+.admin-content {
+  animation: admin-content-in 260ms var(--ease-out) both;
+}
+
+.admin-table__row,
+.batch-row,
+.audit-row {
+  animation: admin-row-in 220ms var(--ease-out) both;
+}
+
+.admin-table__row:nth-child(2),
+.batch-row:nth-child(1),
+.audit-row:nth-child(1) {
+  animation-delay: 20ms;
+}
+
+.admin-table__row:nth-child(3),
+.batch-row:nth-child(2),
+.audit-row:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.admin-table__row:nth-child(4),
+.batch-row:nth-child(3),
+.audit-row:nth-child(3) {
+  animation-delay: 60ms;
+}
+
+.admin-table__row:nth-child(n + 5),
+.batch-row:nth-child(n + 4),
+.audit-row:nth-child(n + 4) {
+  animation-delay: 80ms;
 }
 
 .stat-card {
@@ -1397,7 +1846,12 @@ function auditLabel(action: string) {
 .batch-row {
   display: grid;
   min-height: 60px;
-  grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 0.8fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr);
+  grid-template-columns:
+    minmax(180px, 1.4fr)
+    minmax(120px, 0.8fr)
+    minmax(150px, 0.9fr)
+    minmax(110px, 0.7fr)
+    auto;
   align-items: center;
   gap: 14px;
   border-top: 1px solid var(--line);
@@ -1429,6 +1883,157 @@ function auditLabel(action: string) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.reward-settings {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.reward-settings__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reward-settings__heading > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.reward-settings__heading strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.reward-settings__heading span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.reward-settings .field small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.setting-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  cursor: pointer;
+}
+
+.setting-toggle__icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: var(--radius-control-sm);
+  background: var(--surface);
+  color: var(--action);
+}
+
+.setting-toggle__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.setting-toggle__copy strong {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.setting-toggle__copy small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.setting-toggle input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--action);
+}
+
+.setting-toggle__state {
+  min-width: 42px;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: right;
+}
+
+.email-settings-card {
+  grid-column: 1 / -1;
+}
+
+.email-settings-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.email-settings-form .setting-toggle {
+  margin: 0;
+}
+
+.email-smtp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.email-smtp-host {
+  grid-column: span 2;
+}
+
+.email-smtp-from {
+  grid-column: span 2;
+}
+
+.email-test-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.email-test-panel .button {
+  min-height: 42px;
+}
+
+.email-settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.email-settings-state {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.email-setting-ready {
+  color: var(--success);
 }
 
 .provider-fields {
@@ -1507,6 +2112,28 @@ function auditLabel(action: string) {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes admin-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes admin-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 
@@ -1623,6 +2250,10 @@ function auditLabel(action: string) {
     grid-template-columns: 1fr;
   }
 
+  .email-smtp-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .batches-panel {
     grid-column: auto;
   }
@@ -1674,6 +2305,26 @@ function auditLabel(action: string) {
     grid-template-columns: 1fr;
   }
 
+  .email-smtp-grid,
+  .email-test-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .email-smtp-host,
+  .email-smtp-from {
+    grid-column: auto;
+  }
+
+  .email-test-panel .button,
+  .email-settings-actions .button {
+    width: 100%;
+  }
+
+  .email-settings-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .provider-actions {
     flex-direction: column;
   }
@@ -1699,6 +2350,19 @@ function auditLabel(action: string) {
     grid-template-columns: 1fr;
     gap: 5px;
     padding: 12px 0;
+  }
+
+  .batch-row .button {
+    width: 100%;
+  }
+
+  .setting-toggle {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .setting-toggle__state {
+    grid-column: 2;
+    text-align: left;
   }
 }
 </style>

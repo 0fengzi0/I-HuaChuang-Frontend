@@ -23,7 +23,6 @@ defineProps<{
         <BrandLockup />
       </div>
       <div class="auth-visual__caption">
-        <span>画布预览 · 1024 × 1024</span>
         <p>把脑海里的颜色，留在可以继续工作的桌面上。</p>
       </div>
     </section>
@@ -134,14 +133,8 @@ defineProps<{
   color: #fff;
 }
 
-.auth-visual__caption span {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  opacity: 0.72;
-}
-
 .auth-visual__caption p {
-  margin: 8px 0 0;
+  margin: 0;
   font-family: var(--font-display);
   font-size: clamp(24px, 2.5vw, 38px);
   font-weight: 520;

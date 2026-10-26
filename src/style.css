@@ -446,6 +446,11 @@ img {
   padding-right: 44px;
 }
 
+.field input[type='password']::-ms-reveal,
+.field input[type='password']::-ms-clear {
+  display: none;
+}
+
 .input-icon-button {
   position: absolute;
   top: 50%;

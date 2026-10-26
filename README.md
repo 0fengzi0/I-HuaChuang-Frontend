@@ -1,9 +1,9 @@
 # I画创前端
 
-I画创的公开 Vue 前端、产品展示页和 GitHub Pages 演示站点。
+I画创的公开 Vue 前端、产品展示页和 GitHub Pages 在线应用。
 
 - 产品页：<https://0fengzi0.github.io/I-HuaChuang-Frontend/>
-- 前端演示：<https://0fengzi0.github.io/I-HuaChuang-Frontend/app/>
+- 在线应用：<https://0fengzi0.github.io/I-HuaChuang-Frontend/app/>
 - GitHub 仓库：<https://github.com/0fengzi0/I-HuaChuang-Frontend>
 
 ## 技术栈
@@ -51,10 +51,11 @@ Playwright 默认使用本机 Microsoft Edge，并自动启动演示模式开发
 1. 使用 `/I-HuaChuang-Frontend/app/` 基路径构建 Vue SPA。
 2. 复制 `site/` 中的产品页与截图。
 3. 将 SPA 写入 `_site/app/`。
-4. 写入启用内置演示数据的运行时 `config.js`。
+4. 写入连接 `https://api.img.5ixf.com` 的运行时 `config.js`。
 
 `Deploy GitHub Pages` 工作流在每次推送到 `main` 后重新构建并发布 `_site`。
-GitHub Pages 只托管静态前端，不运行 Go API、数据库或真实图片生成服务。
+GitHub Pages 只托管静态前端，登录、积分和图片生成由独立 Go API 提供。
+后端 `ALLOWED_ORIGINS` 必须包含 `https://0fengzi0.github.io`，并配置好第三方图像服务。
 
 ## 运行时配置
 
@@ -62,7 +63,7 @@ GitHub Pages 只托管静态前端，不运行 Go API、数据库或真实图片
 
 ```js
 window.__IHUACHUANG_CONFIG__ = {
-  apiBaseUrl: "https://api.example.com",
+  apiBaseUrl: "https://api.img.5ixf.com",
   demoMode: false,
 }
 ```

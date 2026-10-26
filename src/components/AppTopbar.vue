@@ -9,6 +9,7 @@ import {
   Menu,
   Moon,
   Settings2,
+  Sparkles,
   Sun,
   WalletCards,
   X,
@@ -27,6 +28,7 @@ const menuOpen = ref(false)
 
 const navigation = computed(() => {
   const items = [
+    { to: '/studio', label: '创作', icon: Sparkles },
     { to: '/history', label: '历史', icon: History },
     { to: '/wallet', label: '积分', icon: WalletCards },
     { to: '/account', label: '账户', icon: CircleUserRound },

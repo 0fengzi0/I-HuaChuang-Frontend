@@ -2,9 +2,10 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useForm } from 'vee-validate'
-import { Eye, EyeOff, RefreshCw, UserPlus } from 'lucide-vue-next'
+import { Eye, EyeOff, Gift, RefreshCw, UserPlus } from 'lucide-vue-next'
 import AuthLayout from '../components/AuthLayout.vue'
 import { APIError, apiRequest } from '../api/client'
+import { usePublicSettings } from '../composables/usePublicSettings'
 import { useAuthStore } from '../stores/auth'
 import { registerValidationSchema } from '../validation/auth'
 
@@ -25,6 +26,7 @@ interface RegisterForm {
 
 const auth = useAuthStore()
 const router = useRouter()
+const { data: publicSettings } = usePublicSettings()
 const showPassword = ref(false)
 const submitError = ref('')
 const captcha = ref<CaptchaResponse | null>(null)
@@ -102,8 +104,13 @@ onMounted(() => {
   <AuthLayout
     kicker="创建账户"
     title="开始你的第一张作品"
-    description="账户用于保存任务、积分与最近七天的作品记录。邮箱验证在首期默认关闭。"
+    description="账户用于保存任务、积分与最近七天的作品记录。"
   >
+    <div v-if="publicSettings?.signupGrantCredits" class="registration-reward">
+      <Gift :size="17" aria-hidden="true" />
+      <span>新账户注册奖励</span>
+      <strong>{{ publicSettings.signupGrantCredits }} 积分</strong>
+    </div>
     <form class="form-stack" novalidate @submit="submit">
       <div class="field-grid">
         <label class="field">
@@ -239,6 +246,28 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.registration-reward {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 7px;
+  margin: -12px 0 18px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--action) 24%, var(--line));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--action) 5%, var(--surface));
+  color: var(--action);
+  font-size: 11px;
+}
+
+.registration-reward strong {
+  margin-left: auto;
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .captcha-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 168px;

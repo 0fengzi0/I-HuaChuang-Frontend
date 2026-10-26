@@ -6,7 +6,6 @@ import {
   CalendarDays,
   KeyRound,
   LogOut,
-  Mail,
   Palette,
   Shield,
   Save,
@@ -14,6 +13,7 @@ import {
 } from 'lucide-vue-next'
 import ThemeSegmented from '../components/ThemeSegmented.vue'
 import { APIError, apiRequest, type ThemePreference, type User } from '../api/client'
+import { usePublicSettings } from '../composables/usePublicSettings'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationsStore } from '../stores/notifications'
 import { useThemeStore } from '../stores/theme'
@@ -22,6 +22,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const theme = useThemeStore()
 const notifications = useNotificationsStore()
+const { data: publicSettings } = usePublicSettings()
 const savingTheme = ref(false)
 const loggingOut = ref(false)
 const profileForm = reactive({ username: '', email: '' })
@@ -154,27 +155,37 @@ function formatDate(value: string | undefined) {
 
     <div class="account-grid">
       <section class="profile-card">
-        <div class="profile-avatar">{{ auth.user?.username.slice(0, 1) }}</div>
-        <div class="profile-copy">
-          <span class="card-index">个人资料</span>
-          <h2>{{ auth.user?.username }}</h2>
-          <p>{{ auth.user?.email }}</p>
+        <div class="profile-identity">
+          <div class="profile-avatar">{{ auth.user?.username.slice(0, 1) }}</div>
+          <div class="profile-copy">
+            <span class="card-index">个人资料</span>
+            <h2>{{ auth.user?.username }}</h2>
+            <p>{{ auth.user?.email }}</p>
+          </div>
         </div>
         <div class="profile-facts">
           <div>
-            <UserRound :size="16" aria-hidden="true" />
-            <span>用户名</span>
-            <strong>{{ auth.user?.username }}</strong>
-          </div>
-          <div>
-            <Mail :size="16" aria-hidden="true" />
-            <span>邮箱</span>
-            <strong>{{ auth.user?.email }}</strong>
+            <Shield :size="16" aria-hidden="true" />
+            <span>账户角色</span>
+            <strong>{{ auth.user?.role === 'admin' ? '管理员' : '普通用户' }}</strong>
           </div>
           <div>
             <BadgeCheck :size="16" aria-hidden="true" />
             <span>邮箱验证</span>
-            <strong>{{ auth.user?.emailVerifiedAt ? '已验证' : '首期未启用' }}</strong>
+            <strong>
+              {{
+                auth.user?.emailVerifiedAt
+                  ? '已验证'
+                  : publicSettings?.emailVerification
+                    ? '待验证'
+                    : '未启用'
+              }}
+            </strong>
+          </div>
+          <div>
+            <UserRound :size="16" aria-hidden="true" />
+            <span>账户状态</span>
+            <strong>{{ auth.user?.status === 'active' ? '正常' : '已停用' }}</strong>
           </div>
           <div>
             <CalendarDays :size="16" aria-hidden="true" />
@@ -308,8 +319,7 @@ function formatDate(value: string | undefined) {
 
 .account-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
-  align-items: start;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
@@ -322,9 +332,20 @@ function formatDate(value: string | undefined) {
 
 .profile-card {
   display: grid;
+  grid-template-columns: minmax(240px, 0.68fr) minmax(0, 1.32fr);
+  align-items: stretch;
   gap: 24px;
   padding: 24px;
   background: var(--surface-muted);
+  animation: account-panel-in 260ms var(--ease-out) both;
+}
+
+.profile-identity {
+  display: grid;
+  min-width: 0;
+  align-content: space-between;
+  gap: 20px;
+  padding: 4px;
 }
 
 .profile-avatar {
@@ -357,6 +378,7 @@ function formatDate(value: string | undefined) {
 
 .profile-facts {
   display: grid;
+  align-content: center;
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -394,11 +416,25 @@ function formatDate(value: string | undefined) {
 
 .settings-stack {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
 .settings-card {
   padding: 20px;
+  animation: account-panel-in 280ms var(--ease-out) both;
+}
+
+.settings-card:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.settings-card:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.settings-card:nth-child(4) {
+  animation-delay: 120ms;
 }
 
 .account-form {
@@ -422,8 +458,20 @@ function formatDate(value: string | undefined) {
   margin-top: 16px;
 }
 
+@keyframes account-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 800px) {
-  .account-grid {
+  .profile-card,
+  .settings-stack {
     grid-template-columns: 1fr;
   }
 }
@@ -432,6 +480,10 @@ function formatDate(value: string | undefined) {
   .profile-card,
   .settings-card {
     padding: 16px;
+  }
+
+  .profile-card {
+    gap: 18px;
   }
 
   .account-form > .button {

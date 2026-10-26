@@ -21,31 +21,31 @@ const router = createRouter({
       path: '/history',
       name: 'history',
       component: () => import('../views/HistoryView.vue'),
-      meta: { title: '历史作品' },
+      meta: { title: '历史作品', requiresAuth: true },
     },
     {
       path: '/history/:id',
       name: 'history-detail',
       component: () => import('../views/HistoryDetailView.vue'),
-      meta: { title: '任务详情' },
+      meta: { title: '任务详情', requiresAuth: true },
     },
     {
       path: '/wallet',
       name: 'wallet',
       component: () => import('../views/WalletView.vue'),
-      meta: { title: '积分与卡密' },
+      meta: { title: '积分与卡密', requiresAuth: true },
     },
     {
       path: '/account',
       name: 'account',
       component: () => import('../views/AccountView.vue'),
-      meta: { title: '账户设置' },
+      meta: { title: '账户设置', requiresAuth: true },
     },
     {
       path: '/admin',
       name: 'admin',
       component: () => import('../views/AdminView.vue'),
-      meta: { title: '管理后台', admin: true },
+      meta: { title: '管理后台', admin: true, requiresAuth: true },
     },
     {
       path: '/login',
@@ -95,7 +95,7 @@ router.beforeEach(async (to) => {
     }
     return true
   }
-  if (!auth.isAuthenticated) {
+  if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.meta.admin && !auth.isAdmin) {
