@@ -1,6 +1,6 @@
-const pagesDemo = window.location.pathname.startsWith('/I-HuaChuang-Frontend/app/')
+const localDemo = ['localhost', '127.0.0.1'].includes(window.location.hostname)
 
 window.__IHUACHUANG_CONFIG__ = {
-  apiBaseUrl: "",
-  demoMode: pagesDemo,
+  apiBaseUrl: "https://api.img.5ixf.com",
+  demoMode: localDemo,
 }

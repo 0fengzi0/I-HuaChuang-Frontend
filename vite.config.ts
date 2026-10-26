@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig(({ mode }) => {
   const pages = mode === 'pages'
   return {
-    base: pages ? '/I-HuaChuang-Frontend/app/' : '/',
+    base: pages ? './' : '/',
     plugins: [vue(), tailwindcss()],
     server: {
       host: '0.0.0.0',

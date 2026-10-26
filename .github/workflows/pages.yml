@@ -46,11 +46,10 @@ jobs:
         run: |
           base_url="${{ steps.deployment.outputs.page_url }}"
           for attempt in $(seq 1 12); do
-            if curl -fsSL "$base_url" | grep -qi "I画创" &&
-               curl -fsSL "${base_url%/}/app/" | grep -q 'id="app"' &&
-               curl -fsSL "${base_url%/}/app/config.js" |
+            if curl -fsSL "$base_url" | grep -q 'id="app"' &&
+               curl -fsSL "${base_url%/}/config.js" |
                  grep -Fq 'apiBaseUrl: "https://api.img.5ixf.com"' &&
-               curl -fsSL "${base_url%/}/app/config.js" |
+               curl -fsSL "${base_url%/}/config.js" |
                  grep -Fq 'demoMode: false'; then
               exit 0
             fi

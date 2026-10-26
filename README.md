@@ -1,9 +1,9 @@
 # I画创前端
 
-I画创的公开 Vue 前端、产品展示页和 GitHub Pages 在线应用。
+I画创的公开 Vue 前端和 GitHub Pages 在线应用。
 
-- 产品页：<https://0fengzi0.github.io/I-HuaChuang-Frontend/>
-- 在线应用：<https://0fengzi0.github.io/I-HuaChuang-Frontend/app/>
+- 自定义域名：<https://ihc.5ixf.com/>
+- GitHub Pages：<https://0fengzi0.github.io/I-HuaChuang-Frontend/>
 - GitHub 仓库：<https://github.com/0fengzi0/I-HuaChuang-Frontend>
 
 ## 技术栈
@@ -31,7 +31,7 @@ npm run dev
 npm run dev -- --mode pages
 ```
 
-访问 `http://localhost:5173/I-HuaChuang-Frontend/app/`。
+访问 `http://localhost:5173/`。
 
 ## 验证
 
@@ -48,9 +48,9 @@ Playwright 默认使用本机 Microsoft Edge，并自动启动演示模式开发
 
 `npm run build:pages` 会完成以下工作：
 
-1. 使用 `/I-HuaChuang-Frontend/app/` 基路径构建 Vue SPA。
-2. 复制 `site/` 中的产品页与截图。
-3. 将 SPA 写入 `_site/app/`。
+1. 使用相对资源路径构建 Vue SPA。
+2. 将 SPA 直接写入 `_site/`。
+3. 写入 `CNAME`、`.nojekyll` 和旧 `/app/` 地址跳转。
 4. 写入连接 `https://api.img.5ixf.com` 的运行时 `config.js`。
 
 `Deploy GitHub Pages` 工作流在每次推送到 `main` 后重新构建并发布 `_site`。

@@ -9,7 +9,7 @@ export default defineConfig({
   },
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:5180/I-HuaChuang-Frontend/app/',
+    baseURL: 'http://127.0.0.1:5180/',
     channel: process.env.CI ? undefined : 'msedge',
     locale: 'zh-CN',
     timezoneId: 'Asia/Shanghai',
@@ -40,7 +40,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev -- --mode pages --port 5180',
-    url: 'http://127.0.0.1:5180/I-HuaChuang-Frontend/app/',
+    url: 'http://127.0.0.1:5180/',
     reuseExistingServer: false,
     timeout: 120_000,
   },
