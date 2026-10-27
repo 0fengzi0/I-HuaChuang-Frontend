@@ -189,6 +189,7 @@ const apiBaseUrl = (runtimeConfig.apiBaseUrl || import.meta.env.VITE_API_BASE_UR
   /\/$/,
   '',
 )
+const csrfStorageKey = 'lighttable-csrf'
 
 export const isDemoMode =
   runtimeConfig.demoMode ?? import.meta.env.VITE_DEMO_MODE === 'true'
@@ -209,12 +210,32 @@ export function clearAccessToken() {
   accessToken = ''
 }
 
+export function getCSRFToken() {
+  return readStoredCSRFToken() || readCookie('lt_csrf')
+}
+
+export function setCSRFToken(token: string) {
+  try {
+    if (token) {
+      localStorage.setItem(csrfStorageKey, token)
+    } else {
+      localStorage.removeItem(csrfStorageKey)
+    }
+  } catch {
+    // Storage can be unavailable in hardened browser contexts.
+  }
+}
+
+export function clearCSRFToken() {
+  setCSRFToken('')
+}
+
 export function onSessionRefreshed(listener: (session: Session) => void) {
   sessionListener = listener
 }
 
 export function hasCSRFToken() {
-  return isDemoMode || Boolean(readCookie('lt_csrf'))
+  return isDemoMode || Boolean(getCSRFToken())
 }
 
 export async function startSession(
@@ -233,6 +254,7 @@ export async function startSession(
   })
   const session = await parseResponse<Session>(response)
   setAccessToken(session.accessToken)
+  setCSRFToken(session.csrfToken)
   return session
 }
 
@@ -250,11 +272,12 @@ export async function refreshSession() {
       method: 'POST',
       credentials: 'include',
       headers: {
-        'X-CSRF-Token': readCookie('lt_csrf'),
+        'X-CSRF-Token': getCSRFToken(),
       },
     })
     const session = await parseResponse<Session>(response)
     setAccessToken(session.accessToken)
+    setCSRFToken(session.csrfToken)
     sessionListener?.(session)
     return session
   })().finally(() => {
@@ -273,7 +296,7 @@ export async function logoutSession() {
       credentials: 'include',
       headers: {
         Authorization: accessToken ? `Bearer ${accessToken}` : '',
-        'X-CSRF-Token': readCookie('lt_csrf'),
+        'X-CSRF-Token': getCSRFToken(),
       },
     })
     if (!response.ok && response.status !== 401 && response.status !== 403) {
@@ -281,6 +304,7 @@ export async function logoutSession() {
     }
   } finally {
     clearAccessToken()
+    clearCSRFToken()
   }
 }
 
@@ -310,8 +334,11 @@ export async function apiRequest<T>(
     try {
       await refreshSession()
       return apiRequest<T>(path, init, false)
-    } catch {
+    } catch (error) {
       clearAccessToken()
+      if (error instanceof APIError && (error.status === 401 || error.status === 403)) {
+        clearCSRFToken()
+      }
     }
   }
 
@@ -339,8 +366,11 @@ export async function apiBlob(
     try {
       await refreshSession()
       return apiBlob(path, init, false)
-    } catch {
+    } catch (error) {
       clearAccessToken()
+      if (error instanceof APIError && (error.status === 401 || error.status === 403)) {
+        clearCSRFToken()
+      }
     }
   }
   if (!response.ok) {
@@ -381,6 +411,14 @@ function readCookie(name: string) {
     .map((item) => item.trim())
     .find((item) => item.startsWith(prefix))
   return match ? decodeURIComponent(match.slice(prefix.length)) : ''
+}
+
+function readStoredCSRFToken() {
+  try {
+    return localStorage.getItem(csrfStorageKey) || ''
+  } catch {
+    return ''
+  }
 }
 
 function resolveApiUrl(path: string) {

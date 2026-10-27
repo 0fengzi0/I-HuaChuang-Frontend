@@ -4,6 +4,7 @@ import {
   APIError,
   apiRequest,
   clearAccessToken,
+  clearCSRFToken,
   hasCSRFToken,
   logoutSession,
   onSessionRefreshed,
@@ -41,8 +42,11 @@ export const useAuthStore = defineStore('auth', () => {
       if (hasCSRFToken()) {
         applySession(await refreshSession())
       }
-    } catch {
+    } catch (error) {
       clearAccessToken()
+      if (error instanceof APIError && (error.status === 401 || error.status === 403)) {
+        clearCSRFToken()
+      }
       user.value = null
     } finally {
       initialized.value = true
