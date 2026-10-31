@@ -560,10 +560,17 @@ function closeImageLibrary() {
 }
 
 async function selectUploadedImage(image: UploadedImage) {
-  if (
-    selectingImageID.value ||
-    references.value.some((reference) => reference.sourceAssetId === image.id)
-  ) {
+  if (selectingImageID.value) {
+    return
+  }
+  const existing = references.value.find(
+    (reference) => reference.sourceAssetId === image.id,
+  )
+  if (existing) {
+    if (!prompt.value.includes(existing.mention)) {
+      appendMentionReferences([existing])
+    }
+    imageLibraryOpen.value = false
     return
   }
   selectingImageID.value = image.id
@@ -814,33 +821,6 @@ function clearReferences() {
   pendingMentionStart = -1
   nextReferenceNumber = 1
 }
-
-watch(prompt, (value) => {
-  const activeMentions = new Set(
-    Array.from(value.matchAll(/@图片\d+/g), (match) => match[0]),
-  )
-  const stale = references.value.filter(
-    (reference) => !activeMentions.has(reference.mention),
-  )
-  if (stale.length === 0) {
-    return
-  }
-  const staleIDs = new Set(stale.map((reference) => reference.id))
-  for (const reference of stale) {
-    URL.revokeObjectURL(reference.url)
-  }
-  references.value = references.value.filter((reference) => !staleIDs.has(reference.id))
-  if (staleIDs.has(maskReferenceId.value)) {
-    maskReferenceId.value = references.value[0]?.id ?? ''
-    clearMask()
-  }
-  if (references.value.length === 0) {
-    mode.value = 'generate'
-    if (selectedAspectRatio.value === 'original') {
-      selectedAspectRatio.value = '1:1'
-    }
-  }
-})
 
 function setWorkflow(workflow: WorkflowValue) {
   activeWorkflow.value = workflow
@@ -1364,7 +1344,7 @@ onBeforeUnmount(() => {
           :class="{ 'is-active': activeWorkflow === 'compose' }"
           @click="setWorkflow('compose')"
         >
-          文生图 / 图生图
+          图片生成
         </button>
         <button
           type="button"
@@ -1687,10 +1667,7 @@ onBeforeUnmount(() => {
                   :key="image.id"
                   type="button"
                   class="image-library__item"
-                  :disabled="
-                    Boolean(selectingImageID) ||
-                    references.some((reference) => reference.sourceAssetId === image.id)
-                  "
+                  :disabled="Boolean(selectingImageID)"
                   @click="selectUploadedImage(image)"
                 >
                   <span class="image-library__preview">
