@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   ArrowLeft,
+  Brush,
   CircleAlert,
   Download,
   Heart,
@@ -112,6 +113,18 @@ async function toggleFavorite() {
 async function reuse() {
   if (!generation.value) return
   await router.push({ name: 'studio', query: { reuse: generation.value.id } })
+}
+
+async function continueEditing() {
+  const asset = selectedOutput.value?.asset
+  if (!generation.value || !asset) return
+  await router.push({
+    name: 'studio',
+    query: {
+      reuse: generation.value.id,
+      sourceAsset: asset.id,
+    },
+  })
 }
 
 async function removeGeneration() {
@@ -276,6 +289,15 @@ function formatDate(value: string | null) {
             <button class="button button--secondary" type="button" @click="reuse">
               <RefreshCcw :size="16" aria-hidden="true" />
               复用参数
+            </button>
+            <button
+              class="button button--secondary"
+              type="button"
+              :disabled="!selectedOutput?.asset"
+              @click="continueEditing"
+            >
+              <Brush :size="16" aria-hidden="true" />
+              以此图继续编辑
             </button>
             <button v-if="canDelete" class="button button--danger" type="button" @click="deleteOpen = true">
               <Trash2 :size="16" aria-hidden="true" />

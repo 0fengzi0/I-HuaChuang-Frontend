@@ -15,6 +15,9 @@ test('loads the studio and main routes with demo data', async ({ page }) => {
     timeout: 15_000,
   })
   await expect(page.getByRole('button', { name: /生成另一张/ })).toBeVisible()
+  await page.getByRole('button', { name: '将当前作品作为参考图继续编辑' }).click()
+  await expect(page.getByLabel('参考图').locator('img')).toHaveCount(1)
+  await expect(page.getByLabel('图片描述')).toHaveValue(/@图片1/)
 
   await page.getByRole('button', { name: '重新创作，清空当前内容' }).click()
   await expect(page.locator('.workspace')).toHaveCount(0)

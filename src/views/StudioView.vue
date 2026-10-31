@@ -56,6 +56,8 @@ type WorkflowValue = 'compose' | 'mask'
 type QualityValue = 'auto' | 'low' | 'medium' | 'high'
 type BackgroundValue = 'auto' | 'transparent' | 'opaque'
 
+const maxReferenceCount = 4
+
 interface ReferencePreview {
   id: string
   mention: string
@@ -104,10 +106,12 @@ const maskHasStrokes = ref(false)
 const maskCanvas = ref<HTMLCanvasElement | null>(null)
 const maskExportCanvas = ref<HTMLCanvasElement | null>(null)
 const promptTextarea = ref<HTMLTextAreaElement | null>(null)
+const compactPromptInput = ref<HTMLInputElement | null>(null)
 const referenceFileInput = ref<HTMLInputElement | null>(null)
 const uploadError = ref('')
 const submitError = ref('')
 const submitting = ref(false)
+const importingReference = ref(false)
 const launchFeedback = ref(false)
 const activeGenerationId = ref('')
 const selectedAssetId = ref('')
@@ -180,6 +184,7 @@ const canSubmit = computed(
     !submitting.value &&
     !taskIsActive.value &&
     prompt.value.trim().length > 0 &&
+    hasEnoughCredits.value &&
     (activeWorkflow.value !== 'mask' || maskHasStrokes.value),
 )
 
@@ -256,6 +261,7 @@ const totalCost = computed(() => unitCost.value * count.value)
 const availableCredits = computed(
   () => auth.user?.availableCredits ?? auth.user?.creditBalance ?? 0,
 )
+const hasEnoughCredits = computed(() => totalCost.value <= availableCredits.value)
 const originalReference = computed(() =>
   references.value.find((reference) => reference.width > 0 && reference.height > 0),
 )
@@ -469,13 +475,13 @@ function appendMentionReferences(added: ReferencePreview[]) {
 function addReferenceFiles(files: File[], sourceAssetId = '') {
   uploadError.value = ''
   if (files.length === 0) {
-    return
+    return []
   }
-  if (references.value.length >= 4) {
-    uploadError.value = '最多可选择 4 张参考图片。'
-    return
+  if (references.value.length >= maxReferenceCount) {
+    uploadError.value = `最多可选择 ${maxReferenceCount} 张参考图片。`
+    return []
   }
-  const remaining = 4 - references.value.length
+  const remaining = maxReferenceCount - references.value.length
   const acceptedFiles = files.slice(0, remaining)
   const added: ReferencePreview[] = []
   for (const file of acceptedFiles) {
@@ -526,6 +532,7 @@ function addReferenceFiles(files: File[], sourceAssetId = '') {
       maskReferenceId.value = added[0].id
     }
   }
+  return added
 }
 
 async function loadUploadedImages() {
@@ -578,6 +585,78 @@ async function selectUploadedImage(image: UploadedImage) {
   }
 }
 
+async function loadAssetAsReference(assetId: string, sourceGenerationId = '') {
+  if (!assetId) {
+    return false
+  }
+  if (
+    references.value.some((reference) => reference.sourceAssetId === assetId)
+  ) {
+    notifications.push('这张图片已经在参考图中。', 'warning')
+    return false
+  }
+  if (references.value.length >= maxReferenceCount) {
+    notifications.push(`最多可以添加 ${maxReferenceCount} 张参考图。`, 'warning')
+    return false
+  }
+
+  importingReference.value = true
+  try {
+    const blob = await apiBlob(`/api/assets/${encodeURIComponent(assetId)}/download`)
+    const mimeType = blob.type || 'image/png'
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
+      notifications.push('这张作品不是可用的参考图格式。', 'warning')
+      return false
+    }
+    if (blob.size > 10 * 1024 * 1024) {
+      notifications.push('这张作品超过 10 MB，暂时不能作为参考图。', 'warning')
+      return false
+    }
+    const extension =
+      mimeType === 'image/webp' ? 'webp' : mimeType === 'image/jpeg' ? 'jpg' : 'png'
+    const source = sourceGenerationId.slice(0, 8) || 'result'
+    const file = new File([blob], `ihuachuang-${source}-${assetId.slice(-6)}.${extension}`, {
+      type: mimeType,
+    })
+    const added = addReferenceFiles([file], assetId)
+    if (!added.length) {
+      return false
+    }
+    activeWorkflow.value = 'compose'
+    mode.value = 'edit'
+    return true
+  } catch (error) {
+    notifications.push(
+      error instanceof APIError ? error.message : '作品暂时无法作为参考图载入。',
+      'warning',
+    )
+    return false
+  } finally {
+    importingReference.value = false
+  }
+}
+
+async function useResultAsReference() {
+  const asset = selectedOutput.value?.asset
+  if (!asset || importingReference.value) {
+    return
+  }
+  const added = await loadAssetAsReference(asset.id, activeGeneration.value?.id)
+  if (added) {
+    notifications.push('已把当前作品加入参考图，可以继续描述想修改的内容。', 'success')
+    await nextTick()
+    if (stageVisible.value) {
+      compactPromptInput.value?.focus()
+      compactPromptInput.value?.setSelectionRange(
+        prompt.value.length,
+        prompt.value.length,
+      )
+    } else {
+      promptTextarea.value?.focus()
+    }
+  }
+}
+
 function handlePromptInput(event: Event) {
   const input = event.target as HTMLTextAreaElement
   const cursor = input.selectionStart
@@ -594,8 +673,8 @@ function handlePromptInput(event: Event) {
     }
     return
   }
-  if (references.value.length >= 4) {
-    uploadError.value = '最多可选择 4 张参考图片。'
+  if (references.value.length >= maxReferenceCount) {
+    uploadError.value = `最多可选择 ${maxReferenceCount} 张参考图片。`
     return
   }
   if (!auth.isAuthenticated) {
@@ -609,6 +688,11 @@ function handlePromptInput(event: Event) {
 
 function handlePromptKeydown(event: KeyboardEvent) {
   if (event.isComposing) {
+    return
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    event.preventDefault()
+    void submitGeneration()
     return
   }
   if (event.key === 'Escape' && imageLibraryOpen.value) {
@@ -925,6 +1009,10 @@ async function submitGeneration() {
     submitError.value = '生成服务尚未连接，请联系管理员配置中转站。'
     return
   }
+  if (!hasEnoughCredits.value) {
+    submitError.value = `可用积分不足，本次需要 ${totalCost.value} 积分。`
+    return
+  }
   if (references.value.length === 0 && (mode.value === 'edit' || activeWorkflow.value === 'mask')) {
     submitError.value = '图生图至少需要一张参考图。'
     return
@@ -1076,21 +1164,32 @@ async function toggleFavorite() {
   }
 }
 
-async function applyReuse() {
+async function applyRoutePayload() {
   const reuseID = typeof route.query.reuse === 'string' ? route.query.reuse : ''
-  if (!reuseID) {
+  const sourceAssetID =
+    typeof route.query.sourceAsset === 'string' ? route.query.sourceAsset : ''
+  if (!reuseID && !sourceAssetID) {
     return
   }
   try {
-    const reused = await apiRequest<ReuseResponse>(
-      `/api/generations/${encodeURIComponent(reuseID)}/reuse`,
-      { method: 'POST' },
-    )
-    prompt.value = reused.prompt
-    mode.value = reused.mode
-    applySettings(reused.settings)
+    if (reuseID) {
+      const reused = await apiRequest<ReuseResponse>(
+        `/api/generations/${encodeURIComponent(reuseID)}/reuse`,
+        { method: 'POST' },
+      )
+      prompt.value = reused.prompt
+      mode.value = reused.mode
+      applySettings(reused.settings)
+    }
+    const referenceLoaded = sourceAssetID
+      ? await loadAssetAsReference(sourceAssetID, reuseID)
+      : false
     await router.replace({ name: 'studio' })
-    notifications.push('参数已填入工作台。', 'success')
+    if (referenceLoaded) {
+      notifications.push('原图和参数已带入工作台，可以继续编辑。', 'success')
+    } else if (!sourceAssetID) {
+      notifications.push('参数已填入工作台。', 'success')
+    }
   } catch {
     notifications.push('参数快照暂时无法读取。', 'warning')
   }
@@ -1220,8 +1319,8 @@ watch(activeGeneration, async (generation) => {
 })
 
 watch(
-  () => route.query.reuse,
-  () => void applyReuse(),
+  () => [route.query.reuse, route.query.sourceAsset],
+  () => void applyRoutePayload(),
   { immediate: true },
 )
 
@@ -1470,6 +1569,23 @@ onBeforeUnmount(() => {
             <div v-if="selectedOutput?.asset" class="canvas-actions">
               <button
                 type="button"
+                class="canvas-iterate"
+                aria-label="将当前作品作为参考图继续编辑"
+                title="将当前作品作为参考图继续编辑"
+                :disabled="importingReference"
+                @click.stop="useResultAsReference"
+              >
+                <LoaderCircle
+                  v-if="importingReference"
+                  class="spin"
+                  :size="15"
+                  aria-hidden="true"
+                />
+                <Brush v-else :size="15" aria-hidden="true" />
+                <span>继续改图</span>
+              </button>
+              <button
+                type="button"
                 class="icon-button"
                 :aria-label="selectedOutput.asset.isFavorite ? '取消收藏' : '收藏作品'"
                 :title="selectedOutput.asset.isFavorite ? '取消收藏' : '收藏作品'"
@@ -1507,6 +1623,14 @@ onBeforeUnmount(() => {
           @dragover.prevent
           @drop.prevent="handlePromptDrop"
         >
+          <input
+            ref="referenceFileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            class="reference-file-input"
+            @change="chooseReferenceFiles"
+          >
           <template v-if="!stageVisible">
           <div class="card-heading">
             <h2>描述你想要的画面</h2>
@@ -1614,14 +1738,6 @@ onBeforeUnmount(() => {
               <ImagePlus :size="16" aria-hidden="true" />
             </button>
           </div>
-          <input
-            ref="referenceFileInput"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            multiple
-            class="reference-file-input"
-            @change="chooseReferenceFiles"
-          >
           <div
             v-if="activeWorkflow === 'mask' && selectedMaskReference"
             class="mask-editor"
@@ -1847,6 +1963,7 @@ onBeforeUnmount(() => {
                 <span v-if="launchFeedback">正在准备画布</span>
                 <span v-else-if="submitting">正在提交</span>
                 <span v-else-if="taskIsActive">正在绘制</span>
+                <span v-else-if="!hasEnoughCredits">积分不足</span>
                 <span v-else-if="publicSettings?.generationReady">开始生成</span>
                 <span v-else>服务未连接</span>
                 <strong>{{ totalCost }} 积分</strong>
@@ -1856,18 +1973,63 @@ onBeforeUnmount(() => {
           <p v-if="submitError" class="inline-alert inline-alert--error prompt-error" role="alert">
             {{ submitError }}
           </p>
-          <p class="prompt-footnote">按成功生成的图片计费，失败或超时会退回积分。</p>
+          <p class="prompt-footnote">
+            按成功生成的图片计费，失败或超时会退回积分。Ctrl / ⌘ + Enter 快速生成。
+          </p>
           </template>
           <template v-else>
             <div class="compact-fields">
+              <div v-if="references.length" class="compact-references" aria-label="参考图">
+                <span
+                  v-for="reference in references"
+                  :key="reference.id"
+                  class="compact-reference"
+                  :title="reference.mention"
+                >
+                  <img :src="reference.url" :alt="reference.file.name">
+                  <small>{{ reference.mention }}</small>
+                  <button
+                    type="button"
+                    :aria-label="`移除 ${reference.file.name}`"
+                    :title="`移除 ${reference.file.name}`"
+                    :disabled="taskIsActive || submitting"
+                    @click="removeReference(reference.id)"
+                  >
+                    <X :size="10" aria-hidden="true" />
+                  </button>
+                </span>
+              </div>
+              <button
+                type="button"
+                class="compact-add-reference"
+                aria-label="添加参考图"
+                title="添加参考图"
+                :disabled="
+                  taskIsActive ||
+                  submitting ||
+                  importingReference ||
+                  references.length >= maxReferenceCount
+                "
+                @click="referenceFileInput?.click()"
+              >
+                <LoaderCircle
+                  v-if="importingReference"
+                  class="spin"
+                  :size="14"
+                  aria-hidden="true"
+                />
+                <ImagePlus v-else :size="14" aria-hidden="true" />
+              </button>
               <label class="compact-prompt">
                 <span class="visually-hidden">图片描述</span>
                 <input
+                  ref="compactPromptInput"
                   v-model="prompt"
                   maxlength="4000"
                   aria-label="图片描述"
                   placeholder="继续描述你想修改的画面"
                   :disabled="taskIsActive || submitting"
+                  @keydown="handlePromptKeydown"
                 />
               </label>
 
@@ -1951,6 +2113,7 @@ onBeforeUnmount(() => {
                 <Aperture v-else :size="15" aria-hidden="true" />
                 <span v-if="submitting">准备中</span>
                 <span v-else-if="taskIsActive">绘制中</span>
+                <span v-else-if="!hasEnoughCredits">积分不足</span>
                 <span v-else>生成另一张</span>
                 <strong>{{ totalCost }} 积分</strong>
               </button>
@@ -1966,6 +2129,9 @@ onBeforeUnmount(() => {
                 <span>重新创作</span>
               </button>
             </div>
+            <p v-if="uploadError" class="compact-error" role="alert">
+              {{ uploadError }}
+            </p>
           </template>
         </section>
 
@@ -1991,12 +2157,41 @@ onBeforeUnmount(() => {
         :alt="activeGeneration?.prompt || '生成结果'"
         class="dialog-result-image"
       />
-      <div class="image-dialog__note">
-        <Info :size="16" aria-hidden="true" />
-        <span v-if="selectedOutput?.asset">
-          {{ statusHint }} · 保留至
-          {{ new Date(selectedOutput.asset.expiresAt).toLocaleString('zh-CN') }}
-        </span>
+      <div class="image-dialog__foot">
+        <div class="image-dialog__note">
+          <Info :size="16" aria-hidden="true" />
+          <span v-if="selectedOutput?.asset">
+            {{ statusHint }} · 保留至
+            {{ new Date(selectedOutput.asset.expiresAt).toLocaleString('zh-CN') }}
+          </span>
+        </div>
+        <div v-if="selectedOutput?.asset" class="image-dialog__actions">
+          <button
+            type="button"
+            class="button button--secondary button--small"
+            :disabled="importingReference"
+            @click="closePreview(); useResultAsReference()"
+          >
+            <LoaderCircle
+              v-if="importingReference"
+              class="spin"
+              :size="14"
+              aria-hidden="true"
+            />
+            <Brush v-else :size="14" aria-hidden="true" />
+            继续改图
+          </button>
+          <button
+            type="button"
+            class="button button--primary button--small"
+            :disabled="downloading"
+            @click="downloadCurrent"
+          >
+            <LoaderCircle v-if="downloading" class="spin" :size="14" aria-hidden="true" />
+            <Download v-else :size="14" aria-hidden="true" />
+            下载原图
+          </button>
+        </div>
       </div>
     </dialog>
   </div>
@@ -5787,6 +5982,182 @@ onBeforeUnmount(() => {
   .resolution-toggle::before,
   .compact-resolution::before {
     transition: none;
+  }
+}
+
+.canvas-iterate {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--action) 24%, var(--line));
+  border-radius: 999px;
+  background: var(--action-soft);
+  color: var(--action);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  transition:
+    border-color 150ms var(--ease-out),
+    background-color 150ms var(--ease-out),
+    transform 90ms ease-out;
+}
+
+.canvas-iterate:hover:not(:disabled) {
+  border-color: var(--action);
+  background: color-mix(in srgb, var(--action) 16%, var(--surface));
+}
+
+.canvas-iterate:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.compact-references {
+  display: flex;
+  min-width: 0;
+  max-width: 188px;
+  flex: 0 1 auto;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.compact-references::-webkit-scrollbar {
+  display: none;
+}
+
+.compact-reference {
+  position: relative;
+  display: block;
+  width: 38px;
+  height: 40px;
+  flex: 0 0 38px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.compact-reference img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.compact-reference small {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  left: 2px;
+  overflow: hidden;
+  padding: 1px 2px;
+  border-radius: 4px;
+  background: rgb(18 19 22 / 68%);
+  color: #fff;
+  font-size: 7px;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-reference > button {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 52%);
+  border-radius: 50%;
+  background: rgb(14 16 19 / 70%);
+  color: #fff;
+  cursor: pointer;
+}
+
+.compact-add-reference {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  padding: 0;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 150ms var(--ease-out),
+    background-color 150ms var(--ease-out),
+    color 150ms var(--ease-out);
+}
+
+.compact-add-reference:hover:not(:disabled) {
+  border-color: var(--action);
+  background: var(--action-soft);
+  color: var(--action);
+}
+
+.compact-error {
+  grid-column: 1 / -1;
+  margin: -1px 4px 1px;
+  color: var(--warning);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.image-dialog__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px 8px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.image-dialog__foot .image-dialog__note {
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0;
+}
+
+.image-dialog__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+@media (max-width: 620px) {
+  .canvas-iterate {
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .canvas-iterate span {
+    display: none;
+  }
+
+  .compact-references {
+    max-width: 132px;
+  }
+
+  .image-dialog__foot {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+    padding: 10px 12px 12px;
+  }
+
+  .image-dialog__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }
 </style>
