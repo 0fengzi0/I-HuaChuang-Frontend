@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   ArrowLeft,
   Brush,
+  Check,
+  ChevronDown,
   CircleAlert,
+  Copy,
   Download,
   Heart,
   LoaderCircle,
@@ -149,6 +152,55 @@ function selectOutput(output: GenerationOutput) {
   if (output.asset) selectedAssetID.value = output.asset.id
 }
 
+const promptTextEl = ref<HTMLElement | null>(null)
+const promptExpanded = ref(false)
+const promptOverflow = ref(false)
+const promptCopied = ref(false)
+let promptCopiedTimer: number | undefined
+
+function measurePromptOverflow() {
+  const el = promptTextEl.value
+  if (!el || promptExpanded.value) {
+    return
+  }
+  promptOverflow.value = el.scrollHeight > el.clientHeight + 2
+}
+
+watch(
+  () => generation.value?.prompt,
+  async () => {
+    promptExpanded.value = false
+    promptOverflow.value = false
+    await nextTick()
+    measurePromptOverflow()
+  },
+)
+
+onMounted(() => {
+  window.addEventListener('resize', measurePromptOverflow)
+  void nextTick(measurePromptOverflow)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', measurePromptOverflow)
+  window.clearTimeout(promptCopiedTimer)
+})
+
+async function copyPrompt() {
+  const prompt = generation.value?.prompt
+  if (!prompt) return
+  try {
+    await navigator.clipboard.writeText(prompt)
+    promptCopied.value = true
+    window.clearTimeout(promptCopiedTimer)
+    promptCopiedTimer = window.setTimeout(() => {
+      promptCopied.value = false
+    }, 1600)
+  } catch {
+    notifications.push('复制失败，请手动选择文本复制。', 'warning')
+  }
+}
+
 function formatDate(value: string | null) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('zh-CN', {
@@ -186,9 +238,8 @@ function formatDate(value: string | null) {
     </div>
     <template v-else>
       <div class="detail-heading">
-        <div>
+        <div class="detail-heading__meta">
           <span class="page-kicker">任务 {{ generation.id.slice(0, 8) }}</span>
-          <h1>{{ generation.prompt }}</h1>
           <p>
             {{ generation.mode === 'edit' ? '图生图' : '文生图' }}
             · {{ generation.settings.resolution || '1K' }}
@@ -204,53 +255,82 @@ function formatDate(value: string | null) {
       </div>
 
       <div class="detail-layout">
-        <section class="detail-canvas">
-          <div class="detail-canvas__head">
-            <span>{{ selectedOutput?.asset ? `${selectedOutput.asset.width} × ${selectedOutput.asset.height}` : '图片输出' }}</span>
-            <span>{{ generation.outputs.length }} 张 · PNG</span>
-          </div>
-          <div class="detail-canvas__frame">
-            <ProtectedImage
-              v-if="selectedOutput?.asset"
-              :key="selectedOutput.asset.id"
-              :asset-id="selectedOutput.asset.id"
-              :alt="generation.prompt"
-            />
-            <div v-else class="detail-placeholder">
-              <LoaderCircle
-                v-if="['preparing', 'queued', 'running'].includes(generation.status)"
-                class="spin"
-                :size="27"
-                aria-hidden="true"
-              />
-              <CircleAlert v-else :size="27" aria-hidden="true" />
-              <strong>{{ statusText }}</strong>
-              <span>{{ generation.errorMessage || '当前任务没有可预览的结果。' }}</span>
+        <div class="detail-main">
+          <section class="detail-canvas">
+            <div class="detail-canvas__head">
+              <span>{{ selectedOutput?.asset ? `${selectedOutput.asset.width} × ${selectedOutput.asset.height}` : '图片输出' }}</span>
+              <span>{{ generation.outputs.length }} 张 · PNG</span>
             </div>
-          </div>
-          <div v-if="generation.outputs.length" class="detail-outputs">
-            <button
-              v-for="output in generation.outputs"
-              :key="output.id"
-              type="button"
-              :class="{ 'is-selected': selectedOutput?.id === output.id }"
-              :disabled="!output.asset"
-              @click="selectOutput(output)"
-            >
+            <div class="detail-canvas__frame">
               <ProtectedImage
-                v-if="output.asset"
-                :asset-id="output.asset.id"
-                :alt="`第 ${output.position} 张结果`"
-                thumbnail
+                v-if="selectedOutput?.asset"
+                :key="selectedOutput.asset.id"
+                :asset-id="selectedOutput.asset.id"
+                :alt="generation.prompt"
               />
-              <span v-else class="detail-output-state">
-                <LoaderCircle v-if="output.status === 'queued' || output.status === 'running'" class="spin" :size="15" aria-hidden="true" />
-                <CircleAlert v-else :size="15" aria-hidden="true" />
-              </span>
-              <small>{{ String(output.position).padStart(2, '0') }}</small>
-            </button>
-          </div>
-        </section>
+              <div v-else class="detail-placeholder">
+                <LoaderCircle
+                  v-if="['preparing', 'queued', 'running'].includes(generation.status)"
+                  class="spin"
+                  :size="27"
+                  aria-hidden="true"
+                />
+                <CircleAlert v-else :size="27" aria-hidden="true" />
+                <strong>{{ statusText }}</strong>
+                <span>{{ generation.errorMessage || '当前任务没有可预览的结果。' }}</span>
+              </div>
+            </div>
+            <div v-if="generation.outputs.length" class="detail-outputs">
+              <button
+                v-for="output in generation.outputs"
+                :key="output.id"
+                type="button"
+                :class="{ 'is-selected': selectedOutput?.id === output.id }"
+                :disabled="!output.asset"
+                @click="selectOutput(output)"
+              >
+                <ProtectedImage
+                  v-if="output.asset"
+                  :asset-id="output.asset.id"
+                  :alt="`第 ${output.position} 张结果`"
+                  thumbnail
+                />
+                <span v-else class="detail-output-state">
+                  <LoaderCircle v-if="output.status === 'queued' || output.status === 'running'" class="spin" :size="15" aria-hidden="true" />
+                  <CircleAlert v-else :size="15" aria-hidden="true" />
+                </span>
+                <small>{{ String(output.position).padStart(2, '0') }}</small>
+              </button>
+            </div>
+          </section>
+
+          <section v-if="generation.prompt" class="detail-prompt">
+            <header class="detail-prompt__head">
+              <h1>提示词</h1>
+              <div class="detail-prompt__tools">
+                <button type="button" class="detail-prompt__tool" @click="copyPrompt">
+                  <Check v-if="promptCopied" :size="13" aria-hidden="true" />
+                  <Copy v-else :size="13" aria-hidden="true" />
+                  {{ promptCopied ? '已复制' : '复制' }}
+                </button>
+                <button
+                  v-if="promptOverflow || promptExpanded"
+                  type="button"
+                  class="detail-prompt__tool"
+                  @click="promptExpanded = !promptExpanded"
+                >
+                  {{ promptExpanded ? '收起' : '展开全文' }}
+                  <ChevronDown :size="13" :class="{ 'is-flipped': promptExpanded }" aria-hidden="true" />
+                </button>
+              </div>
+            </header>
+            <p
+              ref="promptTextEl"
+              class="detail-prompt__text"
+              :class="{ 'is-clamped': !promptExpanded }"
+            >{{ generation.prompt }}</p>
+          </section>
+        </div>
 
         <aside class="detail-sidebar">
           <section class="detail-panel">
@@ -382,51 +462,50 @@ function formatDate(value: string | null) {
 
 .detail-heading {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 28px;
-  padding: 16px 2px 14px;
+  gap: 20px;
+  padding: 8px 2px 4px;
 }
 
-.detail-heading > div:first-child {
+.detail-heading__meta {
+  display: grid;
   min-width: 0;
-}
-
-.detail-heading h1 {
-  max-width: 28ch;
-  margin: 8px 0 7px;
-  color: var(--ink);
-  font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
-  font-size: clamp(26px, 3.5vw, 44px);
-  font-weight: 570;
-  line-height: 1.18;
+  gap: 6px;
 }
 
 .detail-heading p {
   margin: 0;
   color: var(--muted);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .detail-score {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  flex-shrink: 0;
 }
 
 .detail-score strong {
   color: var(--ink);
   font-family: 'Fredoka', 'IBM Plex Mono', sans-serif;
-  font-size: 44px;
+  font-size: 22px;
   font-weight: 540;
-  line-height: 0.9;
+  line-height: 1;
 }
 
 .detail-score span {
-  margin-top: 5px;
+  margin-top: 3px;
   color: var(--muted);
   font-size: 9px;
+}
+
+.detail-main {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
 }
 
 .detail-layout {
@@ -446,6 +525,77 @@ function formatDate(value: string | null) {
 
 .detail-canvas {
   overflow: hidden;
+}
+
+.detail-prompt {
+  padding: 13px 16px 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.detail-prompt__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.detail-prompt__head h1 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+.detail-prompt__tools {
+  display: flex;
+  gap: 6px;
+}
+
+.detail-prompt__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  color: var(--muted);
+  font-size: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
+}
+
+.detail-prompt__tool:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.detail-prompt__tool svg {
+  transition: transform 0.18s var(--ease-out);
+}
+
+.detail-prompt__tool svg.is-flipped {
+  transform: rotate(180deg);
+}
+
+.detail-prompt__text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail-prompt__text.is-clamped {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .detail-panel {
@@ -730,11 +880,6 @@ function formatDate(value: string | null) {
 
 @media (max-width: 560px) {
   .detail-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .detail-score {
     align-items: flex-start;
   }
 
