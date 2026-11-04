@@ -8,6 +8,9 @@ import type {
   LedgerEntry,
   ReuseResponse,
   Session,
+  TemplateCategory,
+  TemplateList,
+  TemplateSummary,
   User,
 } from './client'
 
@@ -59,6 +62,106 @@ export const demoSession: Session = {
 
 const now = Date.now()
 const expiry = new Date(now + 7 * 86400000).toISOString()
+
+// ---- 模板演示数据（无封面图，走标题占位）----
+const demoTemplateCategories: TemplateCategory[] = [
+  '人像写真',
+  '电商产品',
+  '海报设计',
+  'Logo 与图标',
+  '插画二次元',
+].map((name, index) => ({
+  id: `demo-cat-${index}`,
+  name,
+  sortOrder: index,
+  createdAt: new Date(now - 10 * 86400000).toISOString(),
+}))
+
+const demoTemplateUsage: Record<string, number> = {
+  'demo-template-ink': 128,
+  'demo-template-product': 96,
+  'demo-template-avatar': 64,
+  'demo-template-logo': 42,
+}
+
+const demoTemplatePrompt: Record<string, string> = {
+  'demo-template-ink': '一张{风格}风格的{主体}插画，大面积留白，宣纸质感，意境悠远',
+  'demo-template-product': '一款{产品}的商业摄影产品图，纯白背景，柔和顶光，高清细节',
+  'demo-template-avatar': '把照片变成{画风}风格的漫画头像，圆形构图，干净背景',
+  'demo-template-logo': '为{品牌}设计一个极简{风格}风格的 Logo，矢量感，单色',
+}
+
+function templateVariableNames(prompt: string): string[] {
+  const names: string[] = []
+  for (const match of prompt.matchAll(/\{([^{}]*)\}/g)) {
+    const name = (match[1] ?? '').trim()
+    if (name && !names.includes(name)) {
+      names.push(name)
+    }
+  }
+  return names
+}
+
+const demoTemplates: TemplateSummary[] = [
+  {
+    id: 'demo-template-ink',
+    title: '水墨山水插画',
+    description: '东方留白美学，适合壁纸与插画创作。',
+    categoryId: 'demo-cat-4',
+    categoryName: '插画二次元',
+    status: 'published',
+    variables: templateVariableNames(demoTemplatePrompt['demo-template-ink']),
+    hasCover: false,
+    referenceCount: 0,
+    usageCount: demoTemplateUsage['demo-template-ink'],
+    createdAt: new Date(now - 5 * 86400000).toISOString(),
+    updatedAt: new Date(now - 5 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-template-product',
+    title: '电商白底产品图',
+    description: '一键生成干净的商业摄影产品图。',
+    categoryId: 'demo-cat-1',
+    categoryName: '电商产品',
+    status: 'published',
+    variables: templateVariableNames(demoTemplatePrompt['demo-template-product']),
+    hasCover: false,
+    referenceCount: 0,
+    usageCount: demoTemplateUsage['demo-template-product'],
+    createdAt: new Date(now - 4 * 86400000).toISOString(),
+    updatedAt: new Date(now - 4 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-template-avatar',
+    title: '漫画风头像',
+    description: '把人像照片转成风格化漫画头像。',
+    categoryId: 'demo-cat-0',
+    categoryName: '人像写真',
+    status: 'published',
+    variables: templateVariableNames(demoTemplatePrompt['demo-template-avatar']),
+    hasCover: false,
+    referenceCount: 0,
+    usageCount: demoTemplateUsage['demo-template-avatar'],
+    createdAt: new Date(now - 3 * 86400000).toISOString(),
+    updatedAt: new Date(now - 3 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-template-logo',
+    title: '极简 Logo 草图',
+    description: '快速探索品牌 Logo 方向。',
+    categoryId: 'demo-cat-3',
+    categoryName: 'Logo 与图标',
+    status: 'published',
+    variables: templateVariableNames(demoTemplatePrompt['demo-template-logo']),
+    hasCover: false,
+    referenceCount: 0,
+    usageCount: demoTemplateUsage['demo-template-logo'],
+    createdAt: new Date(now - 2 * 86400000).toISOString(),
+    updatedAt: new Date(now - 2 * 86400000).toISOString(),
+  },
+]
+
+const demoFavoriteTemplateIDs = new Set<string>(['demo-template-ink'])
 
 function makeAsset(id: string, width: number, height: number): GenerationAsset {
   return {
@@ -519,6 +622,85 @@ export async function demoRequest<T>(path: string, init: RequestInit = {}): Prom
 
   if (url.pathname === '/api/admin/settings/provider/test') {
     return { reachable: true, modelAvailable: true, requestId: 'demo-request' } as T
+  }
+
+  if (url.pathname === '/api/templates' && method === 'GET') {
+    const tab = url.searchParams.get('tab')
+    const category = url.searchParams.get('category')
+    const search = url.searchParams.get('search')?.toLowerCase() ?? ''
+    const sort = url.searchParams.get('sort')
+    let items = demoTemplates.filter((item) => item.status === 'published')
+    if (tab === 'favorites') {
+      items = items.filter((item) => demoFavoriteTemplateIDs.has(item.id))
+    }
+    if (category) {
+      items = items.filter((item) => item.categoryId === category)
+    }
+    if (search) {
+      items = items.filter(
+        (item) =>
+          item.title.toLowerCase().includes(search) ||
+          item.description.toLowerCase().includes(search) ||
+          demoTemplatePrompt[item.id]?.toLowerCase().includes(search),
+      )
+    }
+    if (sort === 'popular') {
+      items = [...items].sort((a, b) => b.usageCount - a.usageCount)
+    } else {
+      items = [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    }
+    return {
+      items: items.slice(0, Number(url.searchParams.get('limit')) || 20),
+      nextCursor: null,
+    } as TemplateList as T
+  }
+
+  if (url.pathname === '/api/template-categories' && method === 'GET') {
+    return { categories: demoTemplateCategories } as T
+  }
+
+  if (segments[1] === 'templates' && segments[2]) {
+    const found = demoTemplates.find((item) => item.id === segments[2])
+    if (!found) {
+      return { error: { code: 'template_not_found', message: '未找到这个模板。' } } as T
+    }
+    if (segments[3] === 'use' && method === 'POST') {
+      const body = parseRequestBody(init) as { variables?: Record<string, string> }
+      let prompt = demoTemplatePrompt[found.id] ?? ''
+      for (const name of found.variables) {
+        prompt = prompt.replaceAll(`{${name}}`, (body.variables?.[name] ?? '').trim())
+      }
+      demoTemplateUsage[found.id] = (demoTemplateUsage[found.id] ?? 0) + 1
+      found.usageCount = demoTemplateUsage[found.id]
+      return { id: found.id, title: found.title, prompt, references: [] } as T
+    }
+    if (segments[3] === 'favorite' && method === 'POST') {
+      const body = parseRequestBody(init) as { favorite?: boolean }
+      if (body.favorite) {
+        demoFavoriteTemplateIDs.add(found.id)
+      } else {
+        demoFavoriteTemplateIDs.delete(found.id)
+      }
+      return { favorite: Boolean(body.favorite) } as T
+    }
+    if (segments.length === 3) {
+      return {
+        ...found,
+        prompt: demoTemplatePrompt[found.id] ?? '',
+        references: [],
+        isFavorite: demoFavoriteTemplateIDs.has(found.id),
+      } as T
+    }
+  }
+
+  if (url.pathname === '/api/admin/templates' && method === 'GET') {
+    const status = url.searchParams.get('status')
+    const items = demoTemplates.filter((item) => !status || item.status === status)
+    return { items, nextOffset: null } as T
+  }
+
+  if (url.pathname === '/api/admin/template-categories' && method === 'GET') {
+    return { categories: demoTemplateCategories } as T
   }
 
   if (url.pathname.startsWith('/api/admin/')) {

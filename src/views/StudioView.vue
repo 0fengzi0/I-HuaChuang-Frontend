@@ -33,6 +33,7 @@ import {
   type GenerationOutput,
   type GenerationSettings,
   type ReuseResponse,
+  type TemplateDetail,
 } from '../api/client'
 import { usePublicSettings } from '../composables/usePublicSettings'
 import { useAuthStore } from '../stores/auth'
@@ -1145,10 +1146,15 @@ async function toggleFavorite() {
 }
 
 async function applyRoutePayload() {
+  const templateID = typeof route.query.template === 'string' ? route.query.template : ''
   const reuseID = typeof route.query.reuse === 'string' ? route.query.reuse : ''
   const sourceAssetID =
     typeof route.query.sourceAsset === 'string' ? route.query.sourceAsset : ''
-  if (!reuseID && !sourceAssetID) {
+  if (!reuseID && !sourceAssetID && !templateID) {
+    return
+  }
+  if (templateID) {
+    await applyTemplatePayload(templateID)
     return
   }
   try {
@@ -1172,6 +1178,86 @@ async function applyRoutePayload() {
     }
   } catch {
     notifications.push('参数快照暂时无法读取。', 'warning')
+  }
+}
+
+// 模板带入:只回填提示词与参考图,比例/分辨率/张数等参数保持当前设置。
+// 合成结果由模板页经 sessionStorage 交接;缺失时回退读取模板原文。
+async function applyTemplatePayload(templateID: string) {
+  let promptText = ''
+  let referenceIds: string[] = []
+  try {
+    const stored = sessionStorage.getItem(`template-payload-${templateID}`)
+    if (stored) {
+      const payload = JSON.parse(stored) as { prompt?: string; referenceIds?: string[] }
+      promptText = payload.prompt ?? ''
+      referenceIds = Array.isArray(payload.referenceIds) ? payload.referenceIds : []
+      sessionStorage.removeItem(`template-payload-${templateID}`)
+    }
+  } catch {
+    // sessionStorage 不可用或数据损坏时走模板原文回退。
+  }
+  if (!promptText) {
+    try {
+      const detail = await apiRequest<TemplateDetail>(
+        `/api/templates/${encodeURIComponent(templateID)}`,
+      )
+      promptText = detail.prompt
+      referenceIds = detail.references.map((item) => item.id)
+    } catch {
+      notifications.push('模板暂时无法读取。', 'warning')
+      await router.replace({ name: 'studio' })
+      return
+    }
+  }
+  clearReferences()
+  prompt.value = promptText
+  let referenceLoaded = false
+  for (const referenceID of referenceIds) {
+    const loaded = await loadTemplateReference(referenceID)
+    if (!loaded) {
+      break
+    }
+    referenceLoaded = true
+  }
+  await router.replace({ name: 'studio' })
+  if (referenceLoaded) {
+    notifications.push('模板已带入工作台，参考图可以替换后再生成。', 'success')
+  } else {
+    notifications.push('模板已带入工作台，参数可以自由调整。', 'success')
+  }
+}
+
+async function loadTemplateReference(referenceId: string) {
+  if (references.value.length >= maxReferenceCount) {
+    notifications.push(`最多可以添加 ${maxReferenceCount} 张参考图。`, 'warning')
+    return false
+  }
+  try {
+    const blob = await apiBlob(
+      `/api/template-references/${encodeURIComponent(referenceId)}/download`,
+    )
+    const mimeType = blob.type || 'image/png'
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
+      return false
+    }
+    const extension =
+      mimeType === 'image/webp' ? 'webp' : mimeType === 'image/jpeg' ? 'jpg' : 'png'
+    const file = new File(
+      [blob],
+      `ihuachuang-template-${referenceId.slice(-6)}.${extension}`,
+      { type: mimeType },
+    )
+    const added = addReferenceFiles([file])
+    if (!added.length) {
+      return false
+    }
+    activeWorkflow.value = 'compose'
+    mode.value = 'edit'
+    return true
+  } catch {
+    notifications.push('模板参考图暂时无法载入。', 'warning')
+    return false
   }
 }
 
@@ -1299,7 +1385,7 @@ watch(activeGeneration, async (generation) => {
 })
 
 watch(
-  () => [route.query.reuse, route.query.sourceAsset],
+  () => [route.query.reuse, route.query.sourceAsset, route.query.template],
   () => void applyRoutePayload(),
   { immediate: true },
 )

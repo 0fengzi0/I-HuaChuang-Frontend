@@ -6,6 +6,7 @@ import {
   CircleUserRound,
   Coins,
   History,
+  LayoutTemplate,
   Menu,
   Moon,
   Settings2,
@@ -29,6 +30,7 @@ const menuOpen = ref(false)
 const navigation = computed(() => {
   const items = [
     { to: '/studio', label: '创作', icon: Sparkles },
+    { to: '/templates', label: '模板', icon: LayoutTemplate },
     { to: '/history', label: '历史', icon: History },
     { to: '/wallet', label: '积分', icon: WalletCards },
     { to: '/account', label: '账户', icon: CircleUserRound },

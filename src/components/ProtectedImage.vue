@@ -8,7 +8,7 @@ const props = withDefaults(
     assetId: string
     alt: string
     thumbnail?: boolean
-    kind?: 'asset' | 'reference'
+    kind?: 'asset' | 'reference' | 'template-cover' | 'template-reference'
   }>(),
   {
     thumbnail: false,
@@ -38,7 +38,11 @@ async function load() {
     const basePath =
       props.kind === 'reference'
         ? `/api/reference-assets/${encodeURIComponent(props.assetId)}/download`
-        : `/api/assets/${encodeURIComponent(props.assetId)}/download`
+        : props.kind === 'template-cover'
+          ? `/api/templates/${encodeURIComponent(props.assetId)}/cover/download`
+          : props.kind === 'template-reference'
+            ? `/api/template-references/${encodeURIComponent(props.assetId)}/download`
+            : `/api/assets/${encodeURIComponent(props.assetId)}/download`
     const blob = await apiBlob(
       `${basePath}?inline=true${props.thumbnail ? '&thumbnail=true' : ''}`,
       { signal: controller.signal },

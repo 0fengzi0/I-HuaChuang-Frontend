@@ -18,6 +18,12 @@ const router = createRouter({
       meta: { title: '创作工作台' },
     },
     {
+      path: '/templates',
+      name: 'templates',
+      component: () => import('../views/TemplatesView.vue'),
+      meta: { title: '创作模板', requiresAuth: true },
+    },
+    {
       path: '/history',
       name: 'history',
       component: () => import('../views/HistoryView.vue'),

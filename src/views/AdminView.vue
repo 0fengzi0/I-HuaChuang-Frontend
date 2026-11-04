@@ -2,6 +2,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
+  ArrowDown,
+  ArrowUp,
   BarChart3,
   CalendarCheck2,
   Check,
@@ -11,19 +13,33 @@ import {
   Download,
   Gift,
   KeyRound,
+  LayoutTemplate,
   LoaderCircle,
   MailCheck,
+  Pencil,
+  Plus,
   Save,
   ScrollText,
   ServerCog,
   Settings2,
   ShieldCheck,
   Ticket,
+  Trash2,
   Users,
   X,
 } from 'lucide-vue-next'
 import PaginationControls from '../components/PaginationControls.vue'
-import { APIError, apiBlob, apiRequest, type User } from '../api/client'
+import ProtectedImage from '../components/ProtectedImage.vue'
+import {
+  APIError,
+  apiBlob,
+  apiRequest,
+  type TemplateCategory,
+  type TemplateDetail,
+  type TemplateSummary,
+  type User,
+} from '../api/client'
+import { parseTemplateVariables, TemplatePromptError } from '../validation/template'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationsStore } from '../stores/notifications'
 
@@ -87,10 +103,11 @@ interface ProviderSetting {
   updatedAt: string
 }
 
-type Tab = 'overview' | 'users' | 'cards' | 'settings' | 'audit'
+type Tab = 'overview' | 'users' | 'cards' | 'templates' | 'settings' | 'audit'
 type PaginatedUsers = { users: User[]; nextOffset: number | null }
 type PaginatedBatches = { batches: Batch[]; nextOffset: number | null }
 type PaginatedAuditLogs = { logs: AuditLog[]; nextOffset: number | null }
+type PaginatedTemplates = { items: TemplateSummary[]; nextOffset: number | null }
 
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
@@ -99,13 +116,16 @@ const activeTab = ref<Tab>('overview')
 const usersPage = ref(1)
 const batchesPage = ref(1)
 const auditPage = ref(1)
+const templatesPage = ref(1)
 const usersPageSize = 20
 const batchesPageSize = 20
 const auditPageSize = 30
+const templatesPageSize = 20
 const tabs = [
   { value: 'overview' as const, label: '概览', icon: BarChart3 },
   { value: 'users' as const, label: '用户', icon: Users },
   { value: 'cards' as const, label: '卡密', icon: Ticket },
+  { value: 'templates' as const, label: '模板', icon: LayoutTemplate },
   { value: 'settings' as const, label: '系统设置', icon: Settings2 },
   { value: 'audit' as const, label: '审计', icon: ScrollText },
 ]
@@ -144,6 +164,457 @@ const { data: auditData, isLoading: auditLoading, isFetching: auditFetching } = 
     ),
   enabled: computed(() => activeTab.value === 'audit'),
 })
+
+// ---- 模板管理 ----
+const templatesStatusFilter = ref('')
+const templatesCategoryFilter = ref('')
+const templatesSearchInput = ref('')
+const templatesSearch = ref('')
+const { data: templatesData, isLoading: templatesLoading, isFetching: templatesFetching } = useQuery({
+  queryKey: [
+    'admin-templates',
+    templatesPage,
+    templatesStatusFilter,
+    templatesCategoryFilter,
+    templatesSearch,
+  ],
+  queryFn: () => {
+    const params = new URLSearchParams({
+      limit: String(templatesPageSize),
+      offset: String((templatesPage.value - 1) * templatesPageSize),
+    })
+    if (templatesStatusFilter.value) params.set('status', templatesStatusFilter.value)
+    if (templatesCategoryFilter.value) params.set('category', templatesCategoryFilter.value)
+    if (templatesSearch.value) params.set('search', templatesSearch.value)
+    return apiRequest<PaginatedTemplates>(`/api/admin/templates?${params.toString()}`)
+  },
+  enabled: computed(() => activeTab.value === 'templates'),
+})
+const { data: adminCategories } = useQuery({
+  queryKey: ['admin-template-categories'],
+  queryFn: () =>
+    apiRequest<{ categories: TemplateCategory[] }>('/api/admin/template-categories'),
+  enabled: computed(() => activeTab.value === 'templates'),
+})
+
+const templateEditorOpen = ref(false)
+const editingTemplate = ref<TemplateSummary | null>(null)
+const templateForm = reactive({
+  title: '',
+  description: '',
+  prompt: '',
+  categoryId: '',
+  status: 'draft',
+})
+const templateFormLoadedFor = ref('')
+const templateSaving = ref(false)
+const templateError = ref('')
+const templateConfirmDeleteID = ref('')
+const templateMediaSaving = ref(false)
+const categoryConfirmDeleteID = ref('')
+const templateCoverInput = ref<HTMLInputElement | null>(null)
+const templateReferenceInput = ref<HTMLInputElement | null>(null)
+
+const editingDetailQuery = useQuery({
+  queryKey: computed(() => ['admin-template-detail', editingTemplate.value?.id ?? '']),
+  queryFn: () => apiRequest<TemplateDetail>(`/api/templates/${editingTemplate.value?.id}`),
+  enabled: computed(() => templateEditorOpen.value && editingTemplate.value !== null),
+})
+const editingDetail = computed(() =>
+  editingTemplate.value ? editingDetailQuery.data.value ?? null : null,
+)
+
+watch(editingDetail, (value) => {
+  if (!value || templateFormLoadedFor.value === value.id) {
+    return
+  }
+  templateFormLoadedFor.value = value.id
+  templateForm.prompt = value.prompt
+})
+
+watch([templatesStatusFilter, templatesCategoryFilter], () => {
+  templatesPage.value = 1
+})
+
+const templateVariablesPreview = computed(() => {
+  if (!templateForm.prompt.trim()) {
+    return { names: [] as string[], error: '' }
+  }
+  try {
+    return { names: parseTemplateVariables(templateForm.prompt), error: '' }
+  } catch (error) {
+    return {
+      names: [] as string[],
+      error: error instanceof TemplatePromptError ? error.message : '提示词格式不正确。',
+    }
+  }
+})
+
+const templateStatusLabels: Record<string, string> = {
+  draft: '草稿',
+  published: '已上架',
+  archived: '已下架',
+}
+
+const templateStatusActions: Record<string, string> = {
+  draft: '转为草稿',
+  published: '上架',
+  archived: '下架',
+}
+
+function openTemplateEditor(summary: TemplateSummary | null) {
+  editingTemplate.value = summary
+  templateEditorOpen.value = true
+  templateError.value = ''
+  templateConfirmDeleteID.value = ''
+  templateFormLoadedFor.value = ''
+  templateForm.title = summary?.title ?? ''
+  templateForm.description = summary?.description ?? ''
+  templateForm.prompt = ''
+  templateForm.categoryId = summary?.categoryId ?? ''
+  templateForm.status = summary?.status ?? 'draft'
+  if (summary) {
+    void queryClient.invalidateQueries({ queryKey: ['admin-template-detail', summary.id] })
+  }
+}
+
+function closeTemplateEditor() {
+  templateEditorOpen.value = false
+  editingTemplate.value = null
+  templateConfirmDeleteID.value = ''
+}
+
+function submitTemplateSearch() {
+  templatesSearch.value = templatesSearchInput.value.trim()
+  templatesPage.value = 1
+}
+
+async function refreshTemplateData() {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['admin-templates'] }),
+    queryClient.invalidateQueries({ queryKey: ['templates'] }),
+  ])
+}
+
+async function saveTemplate() {
+  if (templateVariablesPreview.value.error) {
+    templateError.value = templateVariablesPreview.value.error
+    return
+  }
+  if (!templateForm.title.trim() || !templateForm.categoryId) {
+    templateError.value = '请填写标题并选择分类。'
+    return
+  }
+  templateSaving.value = true
+  templateError.value = ''
+  const body = JSON.stringify({
+    title: templateForm.title.trim(),
+    description: templateForm.description.trim(),
+    prompt: templateForm.prompt,
+    categoryId: templateForm.categoryId,
+    status: templateForm.status,
+  })
+  try {
+    if (editingTemplate.value) {
+      const detail = await apiRequest<TemplateDetail>(
+        `/api/admin/templates/${editingTemplate.value.id}`,
+        { method: 'PATCH', body },
+      )
+      notifications.push('模板已保存。', 'success')
+      editingTemplate.value = detail
+    } else {
+      const detail = await apiRequest<TemplateDetail>('/api/admin/templates', {
+        method: 'POST',
+        body,
+      })
+      notifications.push('模板已创建，可继续上传封面与参考图。', 'success')
+      editingTemplate.value = detail
+      templateForm.status = detail.status
+    }
+    await refreshTemplateData()
+  } catch (error) {
+    templateError.value = error instanceof APIError ? error.message : '暂时无法保存模板。'
+  } finally {
+    templateSaving.value = false
+  }
+}
+
+async function setTemplateStatus(summary: TemplateSummary, status: string) {
+  try {
+    await apiRequest(`/api/admin/templates/${summary.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    })
+    notifications.push(`模板已${templateStatusActions[status] ?? '更新'}。`, 'success')
+    if (editingTemplate.value?.id === summary.id) {
+      templateForm.status = status
+    }
+    await refreshTemplateData()
+  } catch (error) {
+    notifications.push(
+      error instanceof APIError ? error.message : '暂时无法更新模板状态。',
+      'error',
+    )
+  }
+}
+
+async function deleteTemplate(summary: TemplateSummary) {
+  if (templateConfirmDeleteID.value !== summary.id) {
+    templateConfirmDeleteID.value = summary.id
+    return
+  }
+  templateConfirmDeleteID.value = ''
+  try {
+    await apiRequest(`/api/admin/templates/${summary.id}`, { method: 'DELETE' })
+    notifications.push('模板已删除。', 'success')
+    if (editingTemplate.value?.id === summary.id) {
+      closeTemplateEditor()
+    }
+    await refreshTemplateData()
+  } catch (error) {
+    notifications.push(
+      error instanceof APIError ? error.message : '暂时无法删除模板。',
+      'error',
+    )
+  }
+}
+
+function validateTemplateImage(file: File) {
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    notifications.push('仅支持 PNG、JPEG 或 WebP 图片。', 'error')
+    return false
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    notifications.push('单张图片不能超过 10 MB。', 'error')
+    return false
+  }
+  return true
+}
+
+function chooseTemplateCover(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !editingTemplate.value || !validateTemplateImage(file)) {
+    return
+  }
+  void uploadTemplateCover(file)
+}
+
+async function uploadTemplateCover(file: File) {
+  if (!editingTemplate.value) {
+    return
+  }
+  templateMediaSaving.value = true
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    await apiRequest(`/api/admin/templates/${editingTemplate.value.id}/cover`, {
+      method: 'POST',
+      body: form,
+    })
+    notifications.push('封面已更新。', 'success')
+    await refreshTemplateEditor()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '封面暂时无法上传。', 'error')
+  } finally {
+    templateMediaSaving.value = false
+  }
+}
+
+async function removeTemplateCover() {
+  if (!editingTemplate.value) {
+    return
+  }
+  templateMediaSaving.value = true
+  try {
+    await apiRequest(`/api/admin/templates/${editingTemplate.value.id}/cover`, {
+      method: 'DELETE',
+    })
+    notifications.push('封面已删除。', 'success')
+    await refreshTemplateEditor()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '封面暂时无法删除。', 'error')
+  } finally {
+    templateMediaSaving.value = false
+  }
+}
+
+function chooseTemplateReferences(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  for (const file of files) {
+    void addTemplateReference(file)
+  }
+}
+
+async function addTemplateReference(file: File) {
+  if (!editingTemplate.value || !validateTemplateImage(file)) {
+    return
+  }
+  if ((editingDetail.value?.references.length ?? 0) >= 4) {
+    notifications.push('每个模板最多 4 张参考图。', 'error')
+    return
+  }
+  templateMediaSaving.value = true
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    await apiRequest(`/api/admin/templates/${editingTemplate.value.id}/references`, {
+      method: 'POST',
+      body: form,
+    })
+    notifications.push('参考图已上传。', 'success')
+    await refreshTemplateEditor()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '参考图暂时无法上传。', 'error')
+  } finally {
+    templateMediaSaving.value = false
+  }
+}
+
+async function removeTemplateReference(referenceId: string) {
+  if (!editingTemplate.value) {
+    return
+  }
+  templateMediaSaving.value = true
+  try {
+    await apiRequest(
+      `/api/admin/templates/${editingTemplate.value.id}/references/${referenceId}`,
+      { method: 'DELETE' },
+    )
+    notifications.push('参考图已删除。', 'success')
+    await refreshTemplateEditor()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '参考图暂时无法删除。', 'error')
+  } finally {
+    templateMediaSaving.value = false
+  }
+}
+
+async function moveTemplateReference(index: number, direction: -1 | 1) {
+  const references = editingDetail.value?.references ?? []
+  const target = index + direction
+  if (!editingTemplate.value || target < 0 || target >= references.length) {
+    return
+  }
+  const ids = references.map((item) => item.id)
+  ;[ids[index], ids[target]] = [ids[target], ids[index]]
+  templateMediaSaving.value = true
+  try {
+    await apiRequest(`/api/admin/templates/${editingTemplate.value.id}/references/order`, {
+      method: 'PUT',
+      body: JSON.stringify({ referenceIds: ids }),
+    })
+    await refreshTemplateEditor()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '暂时无法调整顺序。', 'error')
+  } finally {
+    templateMediaSaving.value = false
+  }
+}
+
+async function refreshTemplateEditor() {
+  if (!editingTemplate.value) {
+    return
+  }
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['admin-template-detail', editingTemplate.value.id] }),
+    refreshTemplateData(),
+  ])
+}
+
+// ---- 模板分类管理 ----
+const newCategoryName = ref('')
+const categorySaving = ref(false)
+const editingCategoryID = ref('')
+const editingCategoryName = ref('')
+
+async function createCategory() {
+  if (!newCategoryName.value.trim() || categorySaving.value) {
+    return
+  }
+  categorySaving.value = true
+  try {
+    await apiRequest('/api/admin/template-categories', {
+      method: 'POST',
+      body: JSON.stringify({ name: newCategoryName.value.trim() }),
+    })
+    newCategoryName.value = ''
+    notifications.push('分类已创建。', 'success')
+    await refreshCategoryData()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '暂时无法创建分类。', 'error')
+  } finally {
+    categorySaving.value = false
+  }
+}
+
+function startCategoryEdit(category: TemplateCategory) {
+  editingCategoryID.value = category.id
+  editingCategoryName.value = category.name
+}
+
+async function saveCategoryEdit() {
+  if (!editingCategoryID.value || categorySaving.value) {
+    return
+  }
+  categorySaving.value = true
+  try {
+    await apiRequest(`/api/admin/template-categories/${editingCategoryID.value}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: editingCategoryName.value.trim() }),
+    })
+    editingCategoryID.value = ''
+    notifications.push('分类已更新。', 'success')
+    await refreshCategoryData()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '暂时无法更新分类。', 'error')
+  } finally {
+    categorySaving.value = false
+  }
+}
+
+async function deleteCategory(category: TemplateCategory) {
+  if (categoryConfirmDeleteID.value !== category.id) {
+    categoryConfirmDeleteID.value = category.id
+    return
+  }
+  categoryConfirmDeleteID.value = ''
+  try {
+    await apiRequest(`/api/admin/template-categories/${category.id}`, { method: 'DELETE' })
+    notifications.push('分类已删除，其下模板转为未分类。', 'success')
+    await refreshCategoryData()
+    await refreshTemplateData()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '暂时无法删除分类。', 'error')
+  }
+}
+
+async function moveCategory(index: number, direction: -1 | 1) {
+  const categories = adminCategories.value?.categories ?? []
+  const target = index + direction
+  if (target < 0 || target >= categories.length) {
+    return
+  }
+  const ids = categories.map((item) => item.id)
+  ;[ids[index], ids[target]] = [ids[target], ids[index]]
+  try {
+    await apiRequest('/api/admin/template-categories/order', {
+      method: 'PUT',
+      body: JSON.stringify({ categoryIds: ids }),
+    })
+    await refreshCategoryData()
+  } catch (error) {
+    notifications.push(error instanceof APIError ? error.message : '暂时无法调整顺序。', 'error')
+  }
+}
+
+async function refreshCategoryData() {
+  await queryClient.invalidateQueries({ queryKey: ['admin-template-categories'] })
+  await queryClient.invalidateQueries({ queryKey: ['template-categories'] })
+}
 
 const batchForm = reactive({
   name: '',
@@ -1254,6 +1725,347 @@ function auditLabel(action: string) {
         </article>
       </section>
 
+      <section v-else-if="activeTab === 'templates'" class="admin-content">
+        <article v-if="templateEditorOpen" class="admin-panel template-editor">
+          <div class="panel-heading">
+            <div>
+              <LayoutTemplate :size="19" aria-hidden="true" />
+              <h2>{{ editingTemplate ? '编辑模板' : '新建模板' }}</h2>
+            </div>
+            <button type="button" class="icon-button" aria-label="关闭编辑器" @click="closeTemplateEditor">
+              <X :size="18" aria-hidden="true" />
+            </button>
+          </div>
+          <form class="template-form" @submit.prevent="saveTemplate">
+            <label class="field">
+              <span>标题</span>
+              <input v-model="templateForm.title" maxlength="40" placeholder="例如：水墨山水插画" />
+            </label>
+            <label class="field">
+              <span>分类</span>
+              <select v-model="templateForm.categoryId">
+                <option value="" disabled>请选择分类</option>
+                <option v-for="item in adminCategories?.categories ?? []" :key="item.id" :value="item.id">
+                  {{ item.name }}
+                </option>
+              </select>
+            </label>
+            <label class="field">
+              <span>状态</span>
+              <select v-model="templateForm.status">
+                <option value="draft">草稿</option>
+                <option value="published">已上架</option>
+                <option value="archived">已下架</option>
+              </select>
+            </label>
+            <label class="field field--full">
+              <span>描述（可选）</span>
+              <input v-model="templateForm.description" maxlength="200" placeholder="一句话说明模板用途" />
+            </label>
+            <label class="field field--full">
+              <span>提示词（支持 {变量}）</span>
+              <textarea
+                v-model="templateForm.prompt"
+                rows="4"
+                placeholder="一张{风格}风格的{主体}插画"
+              ></textarea>
+            </label>
+            <div class="field field--full">
+              <span>变量预览</span>
+              <div v-if="templateVariablesPreview.error" class="inline-alert inline-alert--error" role="alert">
+                {{ templateVariablesPreview.error }}
+              </div>
+              <div v-else-if="templateVariablesPreview.names.length" class="template-variable-chips">
+                <span v-for="name in templateVariablesPreview.names" :key="name" class="template-variable-chip">
+                  {{ '{' + name + '}' }}
+                </span>
+              </div>
+              <p v-else class="template-hint">未检测到变量，模板将原样带入提示词。</p>
+            </div>
+            <div v-if="templateError" class="inline-alert inline-alert--error field--full" role="alert">
+              {{ templateError }}
+            </div>
+            <div class="field--full template-form__actions">
+              <button class="button button--primary" type="submit" :disabled="templateSaving">
+                <LoaderCircle v-if="templateSaving" class="spin" :size="16" aria-hidden="true" />
+                <Save v-else :size="16" aria-hidden="true" />
+                {{ editingTemplate ? '保存修改' : '创建模板' }}
+              </button>
+              <button type="button" class="button button--secondary" @click="closeTemplateEditor">
+                关闭
+              </button>
+            </div>
+          </form>
+          <div v-if="editingTemplate" class="template-media">
+            <div class="template-media__block">
+              <h3>封面图</h3>
+              <div class="template-media__cover">
+                <span v-if="editingDetail?.hasCover" class="template-media__cover-preview">
+                  <ProtectedImage
+                    :asset-id="editingTemplate.id"
+                    kind="template-cover"
+                    :alt="`${editingTemplate.title} 封面`"
+                    thumbnail
+                  />
+                </span>
+                <span v-else class="template-media__placeholder">未设置</span>
+                <span class="template-media__cover-actions">
+                  <button
+                    type="button"
+                    class="button button--secondary button--small"
+                    :disabled="templateMediaSaving"
+                    @click="templateCoverInput?.click()"
+                  >
+                    {{ editingDetail?.hasCover ? '更换封面' : '上传封面' }}
+                  </button>
+                  <button
+                    v-if="editingDetail?.hasCover"
+                    type="button"
+                    class="button button--secondary button--small"
+                    :disabled="templateMediaSaving"
+                    @click="removeTemplateCover"
+                  >
+                    删除封面
+                  </button>
+                </span>
+              </div>
+            </div>
+            <div class="template-media__block">
+              <h3>参考图（{{ editingDetail?.references.length ?? 0 }}/4）</h3>
+              <div class="template-media__refs">
+                <div
+                  v-for="(reference, index) in editingDetail?.references ?? []"
+                  :key="reference.id"
+                  class="template-media__ref"
+                >
+                  <span class="template-media__ref-image">
+                    <ProtectedImage
+                      :asset-id="reference.id"
+                      kind="template-reference"
+                      :alt="`参考图 ${index + 1}`"
+                      thumbnail
+                    />
+                  </span>
+                  <span class="template-media__ref-actions">
+                    <button
+                      type="button"
+                      class="icon-button"
+                      aria-label="上移"
+                      :disabled="templateMediaSaving || index === 0"
+                      @click="moveTemplateReference(index, -1)"
+                    >
+                      <ArrowUp :size="14" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-button"
+                      aria-label="下移"
+                      :disabled="templateMediaSaving || index === (editingDetail?.references.length ?? 0) - 1"
+                      @click="moveTemplateReference(index, 1)"
+                    >
+                      <ArrowDown :size="14" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-button"
+                      aria-label="删除参考图"
+                      :disabled="templateMediaSaving"
+                      @click="removeTemplateReference(reference.id)"
+                    >
+                      <Trash2 :size="14" aria-hidden="true" />
+                    </button>
+                  </span>
+                </div>
+                <button
+                  v-if="(editingDetail?.references.length ?? 0) < 4"
+                  type="button"
+                  class="template-media__add"
+                  :disabled="templateMediaSaving"
+                  @click="templateReferenceInput?.click()"
+                >
+                  <Plus :size="16" aria-hidden="true" />
+                  上传参考图
+                </button>
+              </div>
+            </div>
+          </div>
+          <p v-else class="template-hint">创建模板后即可在这里上传封面图与最多 4 张参考图。</p>
+        </article>
+
+        <article class="admin-panel">
+          <div class="panel-heading">
+            <div>
+              <LayoutTemplate :size="19" aria-hidden="true" />
+              <h2>模板列表</h2>
+            </div>
+            <span>共 {{ templatesData?.items.length ?? 0 }} 个（本页）</span>
+          </div>
+          <div class="template-filters">
+            <select v-model="templatesStatusFilter" aria-label="状态筛选">
+              <option value="">全部状态</option>
+              <option value="draft">草稿</option>
+              <option value="published">已上架</option>
+              <option value="archived">已下架</option>
+            </select>
+            <select v-model="templatesCategoryFilter" aria-label="分类筛选">
+              <option value="">全部分类</option>
+              <option v-for="item in adminCategories?.categories ?? []" :key="item.id" :value="item.id">
+                {{ item.name }}
+              </option>
+            </select>
+            <form class="template-search" @submit.prevent="submitTemplateSearch">
+              <input v-model="templatesSearchInput" type="search" placeholder="搜索模板" aria-label="搜索模板" />
+              <button type="submit" class="button button--secondary button--small">搜索</button>
+            </form>
+            <button
+              type="button"
+              class="button button--primary button--small"
+              @click="openTemplateEditor(null)"
+            >
+              <Plus :size="15" aria-hidden="true" />
+              新建模板
+            </button>
+          </div>
+          <div class="template-list">
+            <div v-for="item in templatesData?.items ?? []" :key="item.id" class="template-row">
+              <span class="template-row__thumb">
+                <ProtectedImage
+                  v-if="item.hasCover"
+                  :asset-id="item.id"
+                  kind="template-cover"
+                  :alt="item.title"
+                  thumbnail
+                />
+                <span v-else class="template-row__placeholder">{{ item.title.slice(0, 1) }}</span>
+              </span>
+              <span class="template-row__copy">
+                <strong>{{ item.title }}</strong>
+                <small v-if="item.description">{{ item.description }}</small>
+              </span>
+              <span>{{ item.categoryName || '未分类' }}</span>
+              <span :class="`status-pill status-pill--${item.status}`">
+                {{ templateStatusLabels[item.status] ?? item.status }}
+              </span>
+              <span class="template-row__counts">
+                {{ item.usageCount }} 次使用 · {{ item.favoriteCount ?? 0 }} 收藏
+                <small v-if="item.referenceCount">· {{ item.referenceCount }} 参考图</small>
+              </span>
+              <span class="template-row__actions">
+                <button
+                  type="button"
+                  class="button button--secondary button--small"
+                  @click="openTemplateEditor(item)"
+                >
+                  <Pencil :size="14" aria-hidden="true" />
+                  编辑
+                </button>
+                <button
+                  v-if="item.status !== 'published'"
+                  type="button"
+                  class="button button--secondary button--small"
+                  @click="setTemplateStatus(item, 'published')"
+                >
+                  上架
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="button button--secondary button--small"
+                  @click="setTemplateStatus(item, 'archived')"
+                >
+                  下架
+                </button>
+                <button
+                  type="button"
+                  class="button button--secondary button--small template-row__delete"
+                  :class="{ 'is-confirm': templateConfirmDeleteID === item.id }"
+                  @click="deleteTemplate(item)"
+                >
+                  <Trash2 :size="14" aria-hidden="true" />
+                  {{ templateConfirmDeleteID === item.id ? '确认删除' : '删除' }}
+                </button>
+              </span>
+            </div>
+            <div v-if="!templatesData?.items.length && !templatesLoading" class="mini-empty">
+              <span>还没有模板。点击“新建模板”创建第一个官方模板。</span>
+            </div>
+            <div v-if="templatesLoading" class="state-block">
+              <LoaderCircle class="spin" :size="18" aria-hidden="true" />
+              正在读取模板列表
+            </div>
+          </div>
+          <PaginationControls
+            :page="templatesPage"
+            :has-next="Boolean(templatesData?.nextOffset)"
+            :loading="templatesFetching"
+            @previous="templatesPage = Math.max(1, templatesPage - 1)"
+            @next="templatesPage += 1"
+          />
+        </article>
+
+        <article class="admin-panel">
+          <div class="panel-heading">
+            <div>
+              <LayoutTemplate :size="19" aria-hidden="true" />
+              <h2>模板分类</h2>
+            </div>
+            <span>顺序影响用户端筛选</span>
+          </div>
+          <form class="template-category-form" @submit.prevent="createCategory">
+            <input v-model="newCategoryName" maxlength="20" placeholder="新分类名称" aria-label="新分类名称" />
+            <button type="submit" class="button button--primary button--small" :disabled="categorySaving">
+              <Plus :size="15" aria-hidden="true" />
+              添加分类
+            </button>
+          </form>
+          <div class="template-category-list">
+            <div v-for="(category, index) in adminCategories?.categories ?? []" :key="category.id" class="template-category-row">
+              <template v-if="editingCategoryID === category.id">
+                <input v-model="editingCategoryName" maxlength="20" aria-label="分类名" />
+                <button type="button" class="button button--secondary button--small" @click="saveCategoryEdit">
+                  <Check :size="14" aria-hidden="true" />
+                  保存
+                </button>
+                <button type="button" class="button button--secondary button--small" @click="editingCategoryID = ''">
+                  取消
+                </button>
+              </template>
+              <template v-else>
+                <span class="template-category-row__name">{{ category.name }}</span>
+                <span class="template-category-row__actions">
+                  <button type="button" class="icon-button" aria-label="上移" :disabled="index === 0" @click="moveCategory(index, -1)">
+                    <ArrowUp :size="14" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-button"
+                    aria-label="下移"
+                    :disabled="index === (adminCategories?.categories.length ?? 0) - 1"
+                    @click="moveCategory(index, 1)"
+                  >
+                    <ArrowDown :size="14" aria-hidden="true" />
+                  </button>
+                  <button type="button" class="icon-button" aria-label="重命名" @click="startCategoryEdit(category)">
+                    <Pencil :size="14" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-button template-category-row__delete"
+                    :aria-label="categoryConfirmDeleteID === category.id ? '确认删除' : '删除'"
+                    @click="deleteCategory(category)"
+                  >
+                    <Trash2 :size="14" aria-hidden="true" />
+                  </button>
+                </span>
+              </template>
+            </div>
+            <div v-if="!adminCategories?.categories.length" class="mini-empty">
+              <span>还没有分类。</span>
+            </div>
+          </div>
+        </article>
+      </section>
+
       <section v-else class="admin-content">
         <article class="admin-panel">
           <div class="panel-heading">
@@ -1324,6 +2136,26 @@ function auditLabel(action: string) {
         </form>
       </section>
     </div>
+
+    <input
+      ref="templateCoverInput"
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      class="template-file-input"
+      aria-hidden="true"
+      tabindex="-1"
+      @change="chooseTemplateCover"
+    />
+    <input
+      ref="templateReferenceInput"
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      multiple
+      class="template-file-input"
+      aria-hidden="true"
+      tabindex="-1"
+      @change="chooseTemplateReferences"
+    />
 
     <div v-if="resetTokenUser" class="modal-backdrop" @click.self="resetTokenUser = null">
       <section class="adjust-modal" role="dialog" aria-modal="true" aria-labelledby="reset-title">
@@ -2363,6 +3195,380 @@ function auditLabel(action: string) {
   .setting-toggle__state {
     grid-column: 2;
     text-align: left;
+  }
+}
+
+.template-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.template-editor {
+  border-color: var(--line-strong);
+}
+
+.template-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.template-form .field {
+  display: grid;
+  gap: 5px;
+}
+
+.template-form .field > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.template-form .field input,
+.template-form .field select,
+.template-form .field textarea {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.template-form .field textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.template-form__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.template-variable-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.template-variable-chip {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+}
+
+.template-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.template-media {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.template-media__block h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.template-media__cover {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.template-media__cover-preview {
+  display: block;
+  width: 96px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+}
+
+.template-media__placeholder {
+  display: grid;
+  width: 96px;
+  aspect-ratio: 4 / 3;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-control-sm);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.template-media__cover-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.template-media__refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.template-media__ref {
+  display: grid;
+  gap: 5px;
+}
+
+.template-media__ref-image {
+  display: block;
+  width: 76px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+}
+
+.template-media__ref-actions {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.template-media__add {
+  display: grid;
+  width: 76px;
+  aspect-ratio: 1;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-control-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.template-media__add:hover {
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.template-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.template-filters select {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.template-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.template-search input {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.template-list {
+  display: grid;
+  gap: 8px;
+}
+
+.template-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1.4fr) 0.7fr auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface);
+  font-size: 11px;
+}
+
+.template-row__thumb {
+  display: block;
+  width: 56px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+}
+
+.template-row__placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background: var(--surface-muted);
+  color: var(--muted-soft);
+  font-size: 16px;
+}
+
+.template-row__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.template-row__copy strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-row__copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-row__counts {
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+}
+
+.template-row__counts small {
+  display: block;
+}
+
+.template-row__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.template-row__delete.is-confirm {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.status-pill {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.status-pill--published {
+  color: var(--success);
+}
+
+.status-pill--draft {
+  color: var(--muted);
+}
+
+.status-pill--archived {
+  color: var(--warning);
+}
+
+.template-category-form {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.template-category-form input {
+  flex: 1;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.template-category-list {
+  display: grid;
+  gap: 6px;
+}
+
+.template-category-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  font-size: 11px;
+}
+
+.template-category-row input {
+  flex: 1;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control-sm);
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.template-category-row__name {
+  color: var(--ink);
+}
+
+.template-category-row__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.template-category-row__delete:hover {
+  color: var(--warning);
+}
+
+@media (max-width: 900px) {
+  .template-form,
+  .template-media {
+    grid-template-columns: 1fr;
+  }
+
+  .template-row {
+    grid-template-columns: 56px minmax(0, 1fr);
+    grid-auto-rows: auto;
+  }
+
+  .template-row__actions {
+    justify-content: flex-start;
   }
 }
 </style>

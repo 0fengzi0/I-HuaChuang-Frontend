@@ -155,6 +155,57 @@ export interface ReuseResponse {
   settings: GenerationSettings
 }
 
+export type TemplateStatus = 'draft' | 'published' | 'archived'
+
+export interface TemplateReference {
+  id: string
+  position: number
+  width: number
+  height: number
+  hasThumbnail: boolean
+}
+
+export interface TemplateSummary {
+  id: string
+  title: string
+  description: string
+  categoryId: string
+  categoryName: string
+  status: TemplateStatus
+  variables: string[]
+  hasCover: boolean
+  referenceCount: number
+  usageCount: number
+  favoriteCount?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TemplateDetail extends TemplateSummary {
+  prompt: string
+  references: TemplateReference[]
+  isFavorite: boolean
+}
+
+export interface TemplateList {
+  items: TemplateSummary[]
+  nextCursor: string | null
+}
+
+export interface TemplateCategory {
+  id: string
+  name: string
+  sortOrder: number
+  createdAt: string
+}
+
+export interface UseTemplateResponse {
+  id: string
+  title: string
+  prompt: string
+  references: TemplateReference[]
+}
+
 export class APIError extends Error {
   status: number
   code: string
